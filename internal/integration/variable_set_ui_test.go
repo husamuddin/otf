@@ -122,8 +122,8 @@ func TestIntegration_VariableSetUI_VariableDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.Variables.CreateVariableSetVariable(ctx, set.ID, variable.CreateVariableOptions{
-		Key:      internal.Ptr("varset-var-1"),
-		Value:    internal.Ptr("foo"),
+		Key:      new("varset-var-1"),
+		Value:    new("foo"),
 		Category: internal.Ptr(variable.CategoryTerraform),
 	})
 	require.NoError(t, err)
@@ -239,8 +239,8 @@ func TestIntegration_VariableSetUI_WorkspaceVariables(t *testing.T) {
 
 	// create variable for global set
 	_, err = svc.Variables.CreateVariableSetVariable(ctx, globalSet.ID, variable.CreateVariableOptions{
-		Key:      internal.Ptr("foo"),
-		Value:    internal.Ptr("bar"),
+		Key:      new("foo"),
+		Value:    new("bar"),
 		Category: internal.Ptr(variable.CategoryTerraform),
 	})
 	require.NoError(t, err)
@@ -254,8 +254,8 @@ func TestIntegration_VariableSetUI_WorkspaceVariables(t *testing.T) {
 
 	// create variable for workspace-scoped set
 	_, err = svc.Variables.CreateVariableSetVariable(ctx, workspaceScopedSet.ID, variable.CreateVariableOptions{
-		Key:      internal.Ptr("foo"),
-		Value:    internal.Ptr("bar"),
+		Key:      new("foo"),
+		Value:    new("bar"),
 		Category: internal.Ptr(variable.CategoryTerraform),
 	})
 	require.NoError(t, err)
@@ -265,7 +265,7 @@ func TestIntegration_VariableSetUI_WorkspaceVariables(t *testing.T) {
 		_, err = page.Goto(workspaceURL(svc.System.Hostname(), org.Name, ws1.Name))
 		require.NoError(t, err)
 
-		err = page.Locator(`//ul[@id='workspace-submenu']//li[@id='menu-item-variables']/a`).Click()
+		err = page.Locator(`//li[@id='menu-item-variables']/a`).Click()
 		require.NoError(t, err)
 
 		// both sets define a variable named 'foo', but the workspace-scoped
@@ -298,7 +298,7 @@ func TestIntegration_VariableSetUI_WorkspaceVariables(t *testing.T) {
 		require.NoError(t, err)
 
 		// click through to the variable set variable's edit page
-		err = page.Locator(`//*[@id='variables-table']//tbody/tr[1]/td[2]/s`).Click()
+		err = page.Locator(`//*[@id='variables-table']//tr[1]//button[@id='edit-button']`).Click()
 		require.NoError(t, err)
 
 		// expect variable set variable's edit page to load with title

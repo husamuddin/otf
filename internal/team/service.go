@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
-	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/authz"
+	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/organization"
 	"github.com/leg100/otf/internal/resource"
 	"github.com/leg100/otf/internal/sql"
@@ -24,7 +23,6 @@ type (
 		*authz.Authorizer
 
 		db     *pgdb
-		web    *webHandlers
 		tfeapi *tfe
 		api    *api
 
@@ -53,11 +51,6 @@ func NewService(opts Options) *Service {
 			tokens: opts.TokensService,
 		},
 	}
-	svc.web = &webHandlers{
-		authorizer: opts.Authorizer,
-		tokens:     opts.TokensService,
-		teams:      &svc,
-	}
 	svc.tfeapi = &tfe{
 		Service:   &svc,
 		Responder: opts.Responder,
@@ -75,7 +68,7 @@ func NewService(opts Options) *Service {
 		// is skipped.
 		ctx = authz.AddSkipAuthz(ctx)
 		_, err := svc.Create(ctx, organization.Name, CreateTeamOptions{
-			Name: internal.Ptr("owners"),
+			Name: new("owners"),
 		})
 		if err != nil {
 			return fmt.Errorf("creating owners team: %w", err)
@@ -103,7 +96,6 @@ func NewService(opts Options) *Service {
 }
 
 func (a *Service) AddHandlers(r *mux.Router) {
-	a.web.addHandlers(r)
 	a.tfeapi.addHandlers(r)
 	a.api.addHandlers(r)
 }

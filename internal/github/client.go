@@ -123,8 +123,9 @@ func NewClient(cfg ClientOptions) (*Client, error) {
 
 func setClientURLs(githubURL *internal.WebURL) (*internal.WebURL, *internal.WebURL) {
 	cloned := *githubURL
+
 	// If using public github (github.com) then use api.github.com
-	if cloned.Host == DefaultBaseURL.Host {
+	if cloned.Host == DefaultBaseURL().Host {
 		cloned.Host = "api." + cloned.Host
 	}
 
@@ -148,14 +149,6 @@ func setClientURLs(githubURL *internal.WebURL) (*internal.WebURL, *internal.WebU
 		uploadURL.Path += "api/uploads/"
 	}
 	return &baseURL, &uploadURL
-}
-
-func NewTokenClient(opts vcs.NewTokenClientOptions) (vcs.Client, error) {
-	return NewClient(ClientOptions{
-		BaseURL:             opts.BaseURL,
-		PersonalToken:       &opts.Token,
-		SkipTLSVerification: opts.SkipTLSVerification,
-	})
 }
 
 func NewOAuthClient(cfg authenticator.OAuthConfig, token *oauth2.Token) (authenticator.IdentityProviderClient, error) {
@@ -281,12 +274,12 @@ func (g *Client) GetRepoTarball(ctx context.Context, opts vcs.GetRepoTarballOpti
 
 	link, _, err := g.client.Repositories.GetArchiveLink(ctx, opts.Repo.Owner(), opts.Repo.Name(), github.Tarball, &gopts, maxRedirects)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("getting archive link: %w", err)
 	}
 
 	resp, err := g.client.Client().Get(link.String())
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("getting archive from link: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -345,9 +338,9 @@ func (g *Client) CreateWebhook(ctx context.Context, opts vcs.CreateWebhookOption
 		Config: &github.HookConfig{
 			URL:         &opts.Endpoint,
 			Secret:      &opts.Secret,
-			ContentType: internal.Ptr("json"),
+			ContentType: new("json"),
 		},
-		Active: internal.Ptr(true),
+		Active: new(true),
 	})
 	if err != nil {
 		return "", err
@@ -376,9 +369,9 @@ func (g *Client) UpdateWebhook(ctx context.Context, id string, opts vcs.UpdateWe
 		Config: &github.HookConfig{
 			URL:         &opts.Endpoint,
 			Secret:      &opts.Secret,
-			ContentType: internal.Ptr("json"),
+			ContentType: new("json"),
 		},
-		Active: internal.Ptr(true),
+		Active: new(true),
 	})
 	if err != nil {
 		return err
@@ -449,10 +442,10 @@ func (g *Client) SetStatus(ctx context.Context, opts vcs.SetStatusOptions) error
 	}
 
 	_, _, err := g.client.Repositories.CreateStatus(ctx, opts.Repo.Owner(), opts.Repo.Name(), opts.Ref, &github.RepoStatus{
-		Context:     internal.Ptr(fmt.Sprintf("otf/%s", opts.Workspace)),
-		TargetURL:   internal.Ptr(opts.TargetURL),
-		Description: internal.Ptr(opts.Description),
-		State:       internal.Ptr(status),
+		Context:     new(fmt.Sprintf("otf/%s", opts.Workspace)),
+		TargetURL:   new(opts.TargetURL),
+		Description: new(opts.Description),
+		State:       new(status),
 	})
 	return err
 }
@@ -474,7 +467,7 @@ listloop:
 		// up to 5 times for each page with exponential backoff.
 		maxAttempts := 5
 		attemptDelay := 0 * time.Second
-		for i := 0; i < maxAttempts; i++ {
+		for range maxAttempts {
 			// First don't sleep, then sleep 1, 3, 7, etc.
 			time.Sleep(attemptDelay)
 			attemptDelay = 2*attemptDelay + 1*time.Second

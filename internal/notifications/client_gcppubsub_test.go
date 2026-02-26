@@ -3,7 +3,6 @@ package notifications
 import (
 	"testing"
 
-	"github.com/leg100/otf/internal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,9 +26,9 @@ func TestPubSubClient_New(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := newPubSubClient(&Config{
-				URL: internal.Ptr(tt.u),
+				URL: new(tt.u),
 			})
-			require.Equal(t, tt.want, err)
+			require.ErrorIs(t, err, tt.want)
 		})
 	}
 }

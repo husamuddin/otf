@@ -61,6 +61,10 @@ func (id TfeID) String() string {
 	return fmt.Sprintf("%s-%s", id.kind, id.id)
 }
 
+func (id TfeID) IsZero() bool {
+	return id.id == "" && id.kind == ""
+}
+
 func (id TfeID) Kind() Kind {
 	return id.kind
 }
@@ -115,7 +119,7 @@ func (id *TfeID) Set(text string) error { return id.Scan(text) }
 // using characters from the given alphabet.
 func GenerateRandomStringFromAlphabet(size int, alphabet string) string {
 	buf := make([]byte, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		buf[i] = alphabet[rand.Intn(len(alphabet))]
 	}
 	return string(buf)

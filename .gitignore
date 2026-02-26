@@ -27,14 +27,15 @@ prometheus.yml
 *-wal
 *-shm
 # bins
-/_build
+/_build/*
 # terraform
 /.terraformignore
 .terraform
 .terraform.lock.hcl
-main.tf
 # direnv
 .envrc
+# docker compose env
+.env
 # Created by https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
 ### Emacs ###
 # -*- mode: gitignore; -*-

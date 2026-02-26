@@ -38,7 +38,7 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "default",
 			opts: CreateOptions{
-				Name:         internal.Ptr("my-workspace"),
+				Name:         new("my-workspace"),
 				Organization: &org1,
 			},
 			test: func(t *testing.T, got *Workspace) {
@@ -57,37 +57,53 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "missing organization",
 			opts: CreateOptions{
-				Name: internal.Ptr("my-workspace"),
+				Name: new("my-workspace"),
 			},
 			wantError: internal.ErrRequiredOrg,
 		},
 		{
 			name: "invalid name",
 			opts: CreateOptions{
-				Name: internal.Ptr("%*&^"),
+				Name: new("%*&^"),
 			},
 			wantError: internal.ErrInvalidName,
 		},
 		{
 			name: "specifying both tags regex and trigger patterns",
 			opts: CreateOptions{
-				Name:            internal.Ptr("my-workspace"),
+				Name:            new("my-workspace"),
 				Organization:    &org1,
 				TriggerPatterns: []string{"/foo/**/*.tf"},
 				ConnectOptions: &ConnectOptions{
-					TagsRegex: internal.Ptr("\\d+"),
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
+					VCSProviderID: &vcsProviderID,
+					TagsRegex:     new("\\d+"),
 				},
 			},
 			wantError: ErrTagsRegexAndTriggerPatterns,
 		},
 		{
+			name: "specifying trigger patterns but empty string for tags regex is ok",
+			opts: CreateOptions{
+				Name:            new("my-workspace"),
+				Organization:    &org1,
+				TriggerPatterns: []string{"/foo/**/*.tf"},
+				ConnectOptions: &ConnectOptions{
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
+					VCSProviderID: &vcsProviderID,
+					TagsRegex:     new(""),
+				},
+			},
+			wantError: nil,
+		},
+		{
 			name: "specifying both tags regex and always trigger",
 			opts: CreateOptions{
-				Name:          internal.Ptr("my-workspace"),
+				Name:          new("my-workspace"),
 				Organization:  &org1,
-				AlwaysTrigger: internal.Ptr(true),
+				AlwaysTrigger: new(true),
 				ConnectOptions: &ConnectOptions{
-					TagsRegex: internal.Ptr("\\d+"),
+					TagsRegex: new("\\d+"),
 				},
 			},
 			wantError: ErrTagsRegexAndAlwaysTrigger,
@@ -95,9 +111,9 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "specifying both trigger patterns and always trigger",
 			opts: CreateOptions{
-				Name:            internal.Ptr("my-workspace"),
+				Name:            new("my-workspace"),
 				Organization:    &org1,
-				AlwaysTrigger:   internal.Ptr(true),
+				AlwaysTrigger:   new(true),
 				TriggerPatterns: []string{"/foo/**/*.tf"},
 			},
 			wantError: ErrTriggerPatternsAndAlwaysTrigger,
@@ -105,7 +121,7 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "invalid trigger pattern",
 			opts: CreateOptions{
-				Name:            internal.Ptr("my-workspace"),
+				Name:            new("my-workspace"),
 				Organization:    &org1,
 				TriggerPatterns: []string{"/foo/[**/*.tf"},
 			},
@@ -114,12 +130,12 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "invalid tags regex",
 			opts: CreateOptions{
-				Name:         internal.Ptr("my-workspace"),
+				Name:         new("my-workspace"),
 				Organization: &org1,
 				ConnectOptions: &ConnectOptions{
-					RepoPath:      internal.Ptr(vcs.NewMustRepo("leg100", "otf")),
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
 					VCSProviderID: &vcsProviderID,
-					TagsRegex:     internal.Ptr("{**"),
+					TagsRegex:     new("{**"),
 				},
 			},
 			wantError: ErrInvalidTagsRegex,
@@ -127,9 +143,9 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "agent execution mode with agent pool ID",
 			opts: CreateOptions{
-				Name:          internal.Ptr("my-workspace"),
+				Name:          new("my-workspace"),
 				Organization:  &org1,
-				ExecutionMode: internal.Ptr(AgentExecutionMode),
+				ExecutionMode: new(AgentExecutionMode),
 				AgentPoolID:   &agentPoolID,
 			},
 			wantError: nil,
@@ -137,16 +153,16 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "agent execution mode without agent pool ID",
 			opts: CreateOptions{
-				Name:          internal.Ptr("my-workspace"),
+				Name:          new("my-workspace"),
 				Organization:  &org1,
-				ExecutionMode: internal.Ptr(AgentExecutionMode),
+				ExecutionMode: new(AgentExecutionMode),
 			},
 			wantError: ErrAgentExecutionModeWithoutPool,
 		},
 		{
 			name: "default remote execution mode with agent pool ID",
 			opts: CreateOptions{
-				Name:         internal.Ptr("my-workspace"),
+				Name:         new("my-workspace"),
 				Organization: &org1,
 				AgentPoolID:  &agentPoolID,
 			},
@@ -155,9 +171,9 @@ func TestNewWorkspace(t *testing.T) {
 		{
 			name: "local execution mode with agent pool ID",
 			opts: CreateOptions{
-				Name:          internal.Ptr("my-workspace"),
+				Name:          new("my-workspace"),
 				Organization:  &org1,
-				ExecutionMode: internal.Ptr(LocalExecutionMode),
+				ExecutionMode: new(LocalExecutionMode),
 				AgentPoolID:   &agentPoolID,
 			},
 			wantError: ErrNonAgentExecutionModeWithPool,
@@ -189,7 +205,7 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "invalid name",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name: internal.Ptr("%*&^"),
+				Name: new("%*&^"),
 			},
 			want: internal.ErrInvalidName,
 		},
@@ -197,22 +213,38 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "specifying both tags regex and trigger patterns",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name:            internal.Ptr("my-workspace"),
+				Name:            new("my-workspace"),
 				TriggerPatterns: []string{"/foo/**/*.tf"},
 				ConnectOptions: &ConnectOptions{
-					TagsRegex: internal.Ptr("\\d+"),
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
+					VCSProviderID: &vcsProviderID,
+					TagsRegex:     new("\\d+"),
 				},
 			},
 			want: ErrTagsRegexAndTriggerPatterns,
 		},
 		{
+			name: "specifying trigger patterns but empty string for tags regex is ok",
+			ws:   &Workspace{Name: "dev", Organization: org1},
+			opts: UpdateOptions{
+				Name:            new("my-workspace"),
+				TriggerPatterns: []string{"/foo/**/*.tf"},
+				ConnectOptions: &ConnectOptions{
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
+					VCSProviderID: &vcsProviderID,
+					TagsRegex:     new(""),
+				},
+			},
+			want: nil,
+		},
+		{
 			name: "specifying both tags regex and always trigger",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name:          internal.Ptr("my-workspace"),
-				AlwaysTrigger: internal.Ptr(true),
+				Name:          new("my-workspace"),
+				AlwaysTrigger: new(true),
 				ConnectOptions: &ConnectOptions{
-					TagsRegex: internal.Ptr("\\d+"),
+					TagsRegex: new("\\d+"),
 				},
 			},
 			want: ErrTagsRegexAndAlwaysTrigger,
@@ -221,8 +253,8 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "specifying both trigger patterns and always trigger",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name:            internal.Ptr("my-workspace"),
-				AlwaysTrigger:   internal.Ptr(true),
+				Name:            new("my-workspace"),
+				AlwaysTrigger:   new(true),
 				TriggerPatterns: []string{"/foo/**/*.tf"},
 			},
 			want: ErrTriggerPatternsAndAlwaysTrigger,
@@ -231,7 +263,7 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "invalid trigger pattern",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name:            internal.Ptr("my-workspace"),
+				Name:            new("my-workspace"),
 				TriggerPatterns: []string{"/foo/[**/*.tf"},
 			},
 			want: ErrInvalidTriggerPattern,
@@ -240,11 +272,11 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "invalid tags regex",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name: internal.Ptr("my-workspace"),
+				Name: new("my-workspace"),
 				ConnectOptions: &ConnectOptions{
-					RepoPath:      internal.Ptr(vcs.NewMustRepo("leg100", "otf")),
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
 					VCSProviderID: &vcsProviderID,
-					TagsRegex:     internal.Ptr("{**"),
+					TagsRegex:     new("{**"),
 				},
 			},
 			want: ErrInvalidTagsRegex,
@@ -253,7 +285,7 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "agent execution mode with agent pool ID",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				ExecutionMode: internal.Ptr(AgentExecutionMode),
+				ExecutionMode: new(AgentExecutionMode),
 				AgentPoolID:   &agentPoolID,
 			},
 			want: nil,
@@ -262,7 +294,7 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "agent execution mode without agent pool ID",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				ExecutionMode: internal.Ptr(AgentExecutionMode),
+				ExecutionMode: new(AgentExecutionMode),
 			},
 			want: ErrAgentExecutionModeWithoutPool,
 		},
@@ -286,7 +318,7 @@ func TestWorkspace_UpdateError(t *testing.T) {
 			name: "set local execution mode with agent pool ID",
 			ws:   &Workspace{Name: "dev", Organization: org1, ExecutionMode: RemoteExecutionMode},
 			opts: UpdateOptions{
-				ExecutionMode: internal.Ptr(LocalExecutionMode),
+				ExecutionMode: new(LocalExecutionMode),
 				AgentPoolID:   &agentPoolID,
 			},
 			want: ErrNonAgentExecutionModeWithPool,
@@ -312,7 +344,7 @@ func TestWorkspace_Update(t *testing.T) {
 			name: "default",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name: internal.Ptr("my-workspace"),
+				Name: new("my-workspace"),
 			},
 			want: func(t *testing.T, got *Workspace) {
 				assert.Equal(t, "my-workspace", got.Name)
@@ -338,7 +370,7 @@ func TestWorkspace_Update(t *testing.T) {
 			},
 			opts: UpdateOptions{
 				ConnectOptions: &ConnectOptions{
-					TagsRegex: internal.Ptr("\\d+"),
+					TagsRegex: new("\\d+"),
 				},
 			},
 			want: func(t *testing.T, got *Workspace) {
@@ -382,13 +414,13 @@ func TestWorkspace_UpdateConnection(t *testing.T) {
 			name: "connect",
 			ws:   &Workspace{Name: "dev", Organization: org1},
 			opts: UpdateOptions{
-				Name: internal.Ptr("my-workspace"),
+				Name: new("my-workspace"),
 				ConnectOptions: &ConnectOptions{
-					RepoPath:      internal.Ptr(vcs.NewMustRepo("leg100", "otf")),
+					RepoPath:      new(vcs.NewMustRepo("leg100", "otf")),
 					VCSProviderID: &vcsProviderID,
 				},
 			},
-			want: internal.Ptr(true),
+			want: new(true),
 		},
 		{
 			name: "disconnect",
@@ -398,10 +430,10 @@ func TestWorkspace_UpdateConnection(t *testing.T) {
 				Connection:   &Connection{},
 			},
 			opts: UpdateOptions{
-				Name:       internal.Ptr("my-workspace"),
+				Name:       new("my-workspace"),
 				Disconnect: true,
 			},
-			want: internal.Ptr(false),
+			want: new(false),
 		},
 		{
 			name: "modify connection",
@@ -414,9 +446,9 @@ func TestWorkspace_UpdateConnection(t *testing.T) {
 				},
 			},
 			opts: UpdateOptions{
-				Name: internal.Ptr("my-workspace"),
+				Name: new("my-workspace"),
 				ConnectOptions: &ConnectOptions{
-					RepoPath: internal.Ptr(vcs.NewMustRepo("leg100", "otf-demo")),
+					RepoPath: new(vcs.NewMustRepo("leg100", "otf-demo")),
 				},
 			},
 		},

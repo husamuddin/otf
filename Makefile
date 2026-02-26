@@ -1,16 +1,4 @@
-VERSION = $(shell git describe --tags --dirty --always)
-GIT_COMMIT = $(shell git rev-parse HEAD)
-RANDOM_SUFFIX := $(shell cat /dev/urandom | tr -dc 'a-z0-9' | head -c5)
-IMAGE_NAME = leg100/otfd
-IMAGE_NAME_AGENT = leg100/otf-agent
-IMAGE_TAG ?= $(VERSION)-$(RANDOM_SUFFIX)
-DBSTRING=postgres:///otf
-LD_FLAGS = " \
-    -s -w \
-	-X 'github.com/leg100/otf/internal.Version=$(VERSION)' \
-	-X 'github.com/leg100/otf/internal.Commit=$(GIT_COMMIT)'	\
-	-X 'github.com/leg100/otf/internal.Built=$(shell date +%s)'	\
-	" \
+LD_FLAGS = '-s -w -X github.com/leg100/otf/internal.Version=edge'
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -20,7 +8,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 .PHONY: go-tfe-tests
-go-tfe-tests: image compose-up
+go-tfe-tests: image-otfd compose-up
 	./hack/go-tfe-tests.bash
 
 .PHONY: test
@@ -29,12 +17,14 @@ test:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o _build/ -ldflags $(LD_FLAGS) ./...
-	chmod -R +x _build/*
+	go build \
+		-ldflags $(LD_FLAGS) \
+		-o ./_build/linux/amd64/ \
+		./cmd/otfd ./cmd/otf-job ./cmd/otf-agent
 
 .PHONY: install
 install:
-	go install -ldflags $(LD_FLAGS) ./...
+	go install ./...
 
 .PHONY: install-latest-release
 install-latest-release:
@@ -49,27 +39,22 @@ install-latest-release:
 
 # Run docker compose stack
 .PHONY: compose-up
-compose-up: image
-	docker compose up -d --wait --wait-timeout 60
+compose-up: image-otfd
+	docker compose -f docker-compose.testing.yml up -d --wait --wait-timeout 60
 
 # Remove docker compose stack
 .PHONY: compose-rm
 compose-rm:
-	docker compose rm -sf
+	docker compose -f docker-compose.testing.yml rm -sf
 
 # Run postgresql via docker compose
 .PHONY: postgres
 postgres:
-	docker compose up -d postgres
-
-# Install staticcheck linter
-.PHONY: install-linter
-install-linter:
-	go get -tool honnef.co/go/tools/cmd/staticcheck@2025.1.1
+	docker compose -f docker-compose.testing.yml up -d postgres
 
 # Run staticcheck metalinter recursively against code
 .PHONY: lint
-lint: install-linter
+lint:
 	go tool staticcheck ./...
 
 # Run go fmt against code
@@ -82,25 +67,39 @@ fmt:
 vet:
 	go vet ./...
 
-# Build docker image
-.PHONY: image
-image: build
-	docker build -f Dockerfile -t $(IMAGE_NAME):$(IMAGE_TAG) -t $(IMAGE_NAME):latest ./_build
+# Build docker images
+.PHONY: images
+images: build
+	make -j image-otfd image-agent image-job
 
-# Build and load image into k8s kind
-.PHONY: load
-load: image
-	kind load docker-image $(IMAGE_NAME):$(IMAGE_TAG)
+.PHONY: image-otfd
+image-otfd: build
+	docker build -f Dockerfile -t leg100/otfd:edge --target otfd _build/
 
-# Build docker image for otf-agent
 .PHONY: image-agent
 image-agent: build
-	docker build -f ./Dockerfile.agent -t $(IMAGE_NAME_AGENT):$(IMAGE_TAG) -t $(IMAGE_NAME_AGENT):latest ./_build
+	docker build -f Dockerfile -t leg100/otf-agent:edge --target otf-agent _build/
 
-# Build and load otf-agent image into k8s kind
+.PHONY: image-job
+image-job: build
+	docker build -f Dockerfile -t leg100/otf-job:edge --target otf-job _build/
+
+# Build and load edge images into kubernetes kind
+.PHONY: load
+load: images
+	make -j load-otfd load-agent load-job
+
+.PHONY: load-otfd
+load-otfd:
+	kind load docker-image leg100/otfd:edge
+
 .PHONY: load-agent
-load-agent: image-agent
-	kind load docker-image $(IMAGE_NAME_AGENT):$(IMAGE_TAG)
+load-agent:
+	kind load docker-image leg100/otf-agent:edge
+
+.PHONY: load-job
+load-job:
+	kind load docker-image leg100/otf-job:edge
 
 # Install pre-commit
 .PHONY: install-pre-commit
@@ -123,24 +122,15 @@ doc-screenshots: # update documentation screenshots
 tunnel:
 	cloudflared tunnel run otf
 
-.PHONY: install-goimports
-install-goimports:
-	go get -tool golang.org/x/tools/cmd/goimports@v0.32.0
-
 # Generate path helpers
 .PHONY: paths
-paths: install-goimports
-	go generate ./internal/http/html/paths
-	go tool goimports -w ./internal/http/html/paths
-	go tool goimports -w ./internal/http/html/components/paths
-
-.PHONY: install-stringer
-install-stringer:
-	go get -tool golang.org/x/tools/cmd/stringer@v0.32.0
+paths:
+	go generate ./internal/ui/paths
+	go tool goimports -w ./internal/ui/paths
 
 # Re-generate RBAC action strings
 .PHONY: actions
-actions: install-stringer
+actions:
 	go tool stringer -type Action ./internal/authz
 
 .PHONY: debug
@@ -151,23 +141,22 @@ debug:
 connect:
 	dlv connect 127.0.0.1:4300 .
 
-.PHONY: install-playwright
-install-playwright:
-	go get -tool github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.0
-
 .PHONY: playwright-ubuntu
-install-playwright-ubuntu: install-playwright
+install-playwright-ubuntu:
 	go tool playwright install chromium --with-deps
 
 .PHONY: playwright-arch
-install-playwright-arch: install-playwright
+install-playwright-arch:
 	go tool playwright install chromium
 
 # run templ generation in watch mode to detect all .templ files and
 # re-create _templ.txt files on change, then send reload event to browser.
-# Default url: http://localhost:7331
-live/templ: install-templ
-	go tool templ generate --watch --proxy="https://localhost:8080" --open-browser=false --cmd="go run ./cmd/otfd/main.go"
+# Default url: https://localhost:7331
+live/templ:
+	go tool templ generate --watch --proxybind 0.0.0.0 --proxy="https://localhost:8080" --open-browser=false --cmd="make live/run"
+
+live/run:
+	go run -ldflags $(LD_FLAGS) ./cmd/otfd/main.go
 
 # run tailwindcss to generate the styles.css bundle in watch mode.
 live/tailwind:
@@ -185,17 +174,14 @@ live/sync_assets:
 # start watch processes in parallel.
 #
 # NOTE: for some reason, if live/templ is placed first in the list it blocks
-# the remaining processes, so it's important it is placed first.
+# the remaining processes, so it's important it is placed last.
 live:
 	make -j live/tailwind live/sync_assets live/templ
 
-install-templ:
-	go get -tool github.com/a-h/templ/cmd/templ@v0.3.906
-
-generate-templates: install-templ
+generate-templates:
 	go tool templ generate
 
-check-no-diff: paths actions generate-templates
+check-no-diff: paths actions generate-templates helm-docs
 	git diff --exit-code
 
 .PHONY: deploy-otfd
@@ -209,3 +195,22 @@ test-otfd: deploy-otfd
 .PHONY: bump-chart-version
 bump-chart-version:
 	yq -i '.version |= (split(".") | .[-1] |= ((. tag = "!!int") + 1) | join("."))' ./charts/${CHART}/Chart.yaml
+
+.PHONY: helm-docs
+helm-docs:
+	go tool helm-docs -c ./charts -u
+
+
+.PHONY: helm-dependency-update
+helm-dependency-update: helm-dependency-update-otfd helm-dependency-update-otf-agent
+
+.PHONY: helm-dependency-update-otfd
+helm-dependency-update-otfd:
+	helm dependency update ./charts/otfd
+
+.PHONY: helm-dependency-update-otf-agent
+helm-dependency-update-otf-agent:
+
+.PHONY: helm-lint
+helm-lint:
+	./hack/helm-lint.sh

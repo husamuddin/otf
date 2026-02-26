@@ -3,7 +3,7 @@ package vcs
 import (
 	"context"
 
-	"github.com/go-logr/logr"
+	"github.com/leg100/otf/internal/logr"
 	"github.com/gorilla/mux"
 	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/authz"
@@ -19,7 +19,6 @@ type (
 		*authz.Authorizer
 
 		db                *pgdb
-		web               *webHandlers
 		api               *tfe
 		beforeDeleteHooks []func(context.Context, *Provider) error
 
@@ -54,10 +53,6 @@ func NewService(opts Options) *Service {
 		},
 		kindDB: kindDB,
 	}
-	svc.web = &webHandlers{
-		HostnameService: opts.HostnameService,
-		client:          &svc,
-	}
 	svc.api = &tfe{
 		Service:   &svc,
 		Responder: opts.Responder,
@@ -66,7 +61,6 @@ func NewService(opts Options) *Service {
 }
 
 func (a *Service) AddHandlers(r *mux.Router) {
-	a.web.addHandlers(r)
 	a.api.addHandlers(r)
 }
 

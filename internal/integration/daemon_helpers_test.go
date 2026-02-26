@@ -25,10 +25,12 @@ import (
 	"github.com/leg100/otf/internal/resource"
 	"github.com/leg100/otf/internal/run"
 	"github.com/leg100/otf/internal/runner"
+	"github.com/leg100/otf/internal/runner/agent"
 	"github.com/leg100/otf/internal/runstatus"
 	"github.com/leg100/otf/internal/sql"
 	"github.com/leg100/otf/internal/state"
 	"github.com/leg100/otf/internal/team"
+	"github.com/leg100/otf/internal/testutils"
 	otfuser "github.com/leg100/otf/internal/user"
 	"github.com/leg100/otf/internal/variable"
 	"github.com/leg100/otf/internal/vcs"
@@ -54,6 +56,16 @@ func setup(t *testing.T, opts ...configOption) (*testDaemon, *organization.Organ
 	cfg := &config{
 		Config: daemon.NewConfig(),
 	}
+
+	// Skip TLS verification for tests because they'll be standing up various
+	// stub TLS servers with self-certified certs.
+	cfg.SkipTLSVerification = true
+
+	// Enable SSL by default, because tests running terraform binary mandate it
+	cfg.SSL = true
+	cfg.CertFile = "./fixtures/cert.pem"
+	cfg.KeyFile = "./fixtures/key.pem"
+
 	for _, fn := range opts {
 		fn(cfg)
 	}
@@ -68,16 +80,8 @@ func setup(t *testing.T, opts ...configOption) (*testDaemon, *organization.Organ
 	// Unless test has specified otherwise, disable checking for latest
 	// engine version
 	if cfg.DisableLatestChecker == nil || !*cfg.DisableLatestChecker {
-		cfg.DisableLatestChecker = internal.Ptr(true)
+		cfg.DisableLatestChecker = new(true)
 	}
-	// Skip TLS verification for tests because they'll be standing up various
-	// stub TLS servers with self-certified certs.
-	cfg.SkipTLSVerification = true
-
-	cfg.SSL = true
-	cfg.CertFile = "./fixtures/cert.pem"
-	cfg.KeyFile = "./fixtures/key.pem"
-
 	// Start stub github server, unless test has set its own github stub
 	var githubServer *github.TestServer
 	if !cfg.skipGithubStub {
@@ -90,7 +94,7 @@ func setup(t *testing.T, opts ...configOption) (*testDaemon, *organization.Organ
 	var logger logr.Logger
 	if _, ok := os.LookupEnv("OTF_INTEGRATION_TEST_ENABLE_LOGGER"); ok {
 		var err error
-		logger, err = logr.New(&logr.Config{Verbosity: 9, Format: "default"})
+		logger, err = logr.New(logr.Config{Verbosity: 9, Format: "default"})
 		require.NoError(t, err)
 		cfg.EnableRequestLogging = true
 	} else {
@@ -156,7 +160,7 @@ func (s *testDaemon) createOrganization(t *testing.T, ctx context.Context) *orga
 	t.Helper()
 
 	org, err := s.Organizations.Create(ctx, organization.CreateOptions{
-		Name: internal.Ptr(internal.GenerateRandomString(4) + "-corp"),
+		Name: new(internal.GenerateRandomString(4) + "-corp"),
 	})
 	require.NoError(t, err)
 	return org
@@ -170,7 +174,7 @@ func (s *testDaemon) createWorkspace(t *testing.T, ctx context.Context, org *org
 	}
 
 	ws, err := s.Workspaces.Create(ctx, workspace.CreateOptions{
-		Name:         internal.Ptr("workspace-" + internal.GenerateRandomString(6)),
+		Name:         new("workspace-" + internal.GenerateRandomString(6)),
 		Organization: &org.Name,
 	})
 	require.NoError(t, err)
@@ -219,7 +223,7 @@ func (s *testDaemon) createVCSProvider(t *testing.T, ctx context.Context, org *o
 	opts := vcs.CreateOptions{
 		Organization: org.Name,
 		KindID:       github.TokenKindID,
-		Token:        internal.Ptr(uuid.NewString()),
+		Token:        new(uuid.NewString()),
 	}
 	if createOptions != nil {
 		opts.Name = createOptions.Name
@@ -289,7 +293,7 @@ func (s *testDaemon) createTeam(t *testing.T, ctx context.Context, org *organiza
 	}
 
 	team, err := s.Teams.Create(ctx, org.Name, team.CreateTeamOptions{
-		Name: internal.Ptr("team-" + internal.GenerateRandomString(4)),
+		Name: new("team-" + internal.GenerateRandomString(4)),
 	})
 	require.NoError(t, err)
 	return team
@@ -320,9 +324,8 @@ func (s *testDaemon) createConfigurationVersion(t *testing.T, ctx context.Contex
 
 func (s *testDaemon) createAndUploadConfigurationVersion(t *testing.T, ctx context.Context, ws *workspace.Workspace, opts *configversion.CreateOptions) *configversion.ConfigurationVersion {
 	cv := s.createConfigurationVersion(t, ctx, ws, opts)
-	tarball, err := os.ReadFile("./testdata/root.tar.gz")
-	require.NoError(t, err)
-	err = s.Configs.UploadConfig(ctx, cv.ID, tarball)
+	tarball := testutils.ReadFile(t, "./testdata/root.tar.gz")
+	err := s.Configs.UploadConfig(ctx, cv.ID, tarball)
 	require.NoError(t, err)
 	return cv
 }
@@ -355,8 +358,8 @@ func (s *testDaemon) createVariable(t *testing.T, ctx context.Context, ws *works
 
 	if opts == nil {
 		opts = &variable.CreateVariableOptions{
-			Key:      internal.Ptr("key-" + internal.GenerateRandomString(4)),
-			Value:    internal.Ptr("val-" + internal.GenerateRandomString(4)),
+			Key:      new("key-" + internal.GenerateRandomString(4)),
+			Value:    new("val-" + internal.GenerateRandomString(4)),
 			Category: internal.Ptr(variable.CategoryTerraform),
 		}
 	}
@@ -379,7 +382,7 @@ func (s *testDaemon) createStateVersion(t *testing.T, ctx context.Context, ws *w
 		State:       file,
 		WorkspaceID: ws.ID,
 		// serial matches that in ./testdata/terraform.tfstate
-		Serial: internal.Ptr[int64](9),
+		Serial: new(int64(9)),
 	})
 	require.NoError(t, err)
 	return sv
@@ -418,9 +421,9 @@ func (s *testDaemon) createNotificationConfig(t *testing.T, ctx context.Context,
 
 	nc, err := s.Notifications.Create(ctx, ws.ID, notifications.CreateConfigOptions{
 		DestinationType: notifications.DestinationGeneric,
-		Enabled:         internal.Ptr(true),
-		Name:            internal.Ptr(uuid.NewString()),
-		URL:             internal.Ptr("http://example.com"),
+		Enabled:         new(true),
+		Name:            new(uuid.NewString()),
+		URL:             new("http://example.com"),
 	})
 	require.NoError(t, err)
 	return nc
@@ -436,7 +439,7 @@ func (s *testDaemon) startAgent(t *testing.T, ctx context.Context, org organizat
 	var logger logr.Logger
 	if _, ok := os.LookupEnv("OTF_INTEGRATION_TEST_ENABLE_LOGGER"); ok {
 		var err error
-		logger, err = logr.New(&logr.Config{Verbosity: 1, Format: "default"})
+		logger, err = logr.New(logr.Config{Verbosity: 1, Format: "default"})
 		require.NoError(t, err)
 	} else {
 		logger = logr.Discard()
@@ -458,21 +461,27 @@ func (s *testDaemon) startAgent(t *testing.T, ctx context.Context, org organizat
 		token = string(tokenBytes)
 	}
 
-	cfg := runner.NewConfig()
+	cfg := runner.NewDefaultConfig()
 	for _, fn := range opts {
 		fn(cfg)
 	}
-	agent, err := runner.NewAgent(logger, runner.AgentOptions{
-		Config: cfg,
-		Token:  token,
-		URL:    s.System.URL("/"),
-	})
+
+	// Set a routeable URL for the agent to locate the server. We can't reliably use the
+	// server hostname because in some tests that can be set to something
+	// unrouteable, e.g. the dynamic provider credential test sets it to
+	// something arbitrary.
+	routeableURL := url.URL{
+		Scheme: "https",
+		Host:   fmt.Sprintf("localhost:%d", s.ListenAddress.Port),
+	}
+
+	runner, err := agent.New(logger, routeableURL.String(), token, cfg)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
-		err := agent.Start(ctx)
+		err := runner.Start(ctx)
 		close(done)
 		require.NoError(t, err)
 	}()
@@ -482,8 +491,8 @@ func (s *testDaemon) startAgent(t *testing.T, ctx context.Context, org organizat
 		<-done   // don't exit test until agent fully terminated
 	})
 	// Wait for agent to register itself
-	<-agent.Started()
-	return agent.RunnerMeta, cancel
+	<-runner.Started()
+	return runner.RunnerMeta, cancel
 }
 
 func (s *testDaemon) engineCLI(t *testing.T, ctx context.Context, engine string, command, configPath string, args ...string) string {

@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
 	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/authz"
 	"github.com/leg100/otf/internal/configversion"
 	"github.com/leg100/otf/internal/engine"
+	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/organization"
 	"github.com/leg100/otf/internal/pubsub"
 	"github.com/leg100/otf/internal/resource"
@@ -32,19 +33,20 @@ type (
 	Service struct {
 		logr.Logger
 		authz.Interface
+		*MetricsCollector
 
 		workspaces             *workspace.Service
 		cache                  internal.Cache
 		db                     *pgdb
 		tfeapi                 *tfe
 		api                    *api
-		web                    *webHandlers
 		afterCancelHooks       []func(context.Context, *Run) error
 		afterForceCancelHooks  []func(context.Context, *Run) error
 		afterEnqueuePlanHooks  []func(context.Context, *Run) error
 		afterEnqueueApplyHooks []func(context.Context, *Run) error
 		broker                 pubsub.SubscriptionService[*Event]
 		tailer                 *tailer
+		daemonCtx              context.Context
 
 		*factory
 	}
@@ -52,6 +54,7 @@ type (
 	Options struct {
 		Authorizer         *authz.Authorizer
 		VCSEventSubscriber vcs.Subscriber
+		DaemonCtx          context.Context
 
 		WorkspaceService     *workspace.Service
 		OrganizationService  *organization.Service
@@ -71,13 +74,17 @@ type (
 )
 
 func NewService(opts Options) *Service {
-	db := &pgdb{opts.DB, opts.ConfigVersionService}
+	db := &pgdb{opts.DB}
 	svc := Service{
 		Logger:     opts.Logger,
 		workspaces: opts.WorkspaceService,
 		db:         db,
 		cache:      opts.Cache,
 		Interface:  opts.Authorizer,
+		daemonCtx:  opts.DaemonCtx,
+	}
+	svc.MetricsCollector = &MetricsCollector{
+		service: &svc,
 	}
 	svc.factory = &factory{
 		organizations: opts.OrganizationService,
@@ -86,7 +93,6 @@ func NewService(opts Options) *Service {
 		vcs:           opts.VCSProviderService,
 		releases:      opts.EngineService,
 	}
-	svc.web = newWebHandlers(&svc, opts)
 	svc.tfeapi = &tfe{
 		Service:    &svc,
 		workspaces: opts.WorkspaceService,
@@ -150,7 +156,6 @@ func NewService(opts Options) *Service {
 }
 
 func (s *Service) AddHandlers(r *mux.Router) {
-	s.web.addHandlers(r)
 	s.tfeapi.addHandlers(r)
 	s.api.addHandlers(r)
 }
@@ -230,6 +235,20 @@ func (s *Service) List(ctx context.Context, opts ListOptions) (*resource.Page[*R
 	s.V(9).Info("listed runs", "count", len(page.Items), "subject", subject)
 
 	return page, nil
+}
+
+// ListOlderThan lists runs created before t. Implements resource.deleterClient.
+func (s *Service) ListOlderThan(ctx context.Context, t time.Time) ([]*Run, error) {
+	return resource.ListAll(func(opts resource.PageOptions) (*resource.Page[*Run], error) {
+		return s.List(ctx, ListOptions{
+			PageOptions:     opts,
+			BeforeCreatedAt: &t,
+		})
+	})
+}
+
+func (s *Service) listStatuses(ctx context.Context) ([]status, error) {
+	return s.db.listStatuses(ctx)
 }
 
 // EnqueuePlan enqueues a plan for the run.
@@ -424,6 +443,19 @@ func (s *Service) Cancel(ctx context.Context, runID resource.TfeID) error {
 	}
 	if run.Status != runstatus.Canceled && run.CancelSignaledAt != nil {
 		s.V(0).Info("signaled cancelation", "id", runID, "subject", subject)
+
+		// After the cool off period, send an event, which'll refresh the UI to
+		// inform the user the run can be force canceled.
+		go func() {
+			select {
+			case <-s.daemonCtx.Done():
+				return
+			case <-time.After(forceCancelCoolOff):
+			}
+			if err := s.db.triggerEvent(s.daemonCtx, run.ID); err != nil {
+				s.Error(err, "updating run after for cancel cool off period", "run", run)
+			}
+		}()
 	} else {
 		s.V(0).Info("canceled run", "id", runID, "subject", subject)
 	}

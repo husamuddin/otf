@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./runstatus.css";
+@plugin "@tailwindcss/typography";
 @plugin "../../../../../daisyui.js" {
 	themes: all;
 }
@@ -36,3 +37,4 @@
     @apply text-base-content/60 text-sm;
   }
 }
+

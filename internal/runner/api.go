@@ -5,9 +5,10 @@ import (
 	"errors"
 	"net/http"
 
+	otfhttp "github.com/leg100/otf/internal/http"
+
 	"github.com/gorilla/mux"
 	"github.com/leg100/otf/internal"
-	otfapi "github.com/leg100/otf/internal/api"
 	"github.com/leg100/otf/internal/http/decode"
 	"github.com/leg100/otf/internal/resource"
 	"github.com/leg100/otf/internal/tfeapi"
@@ -34,19 +35,19 @@ type (
 	}
 
 	generateDynamicCredentialsTokenParams struct {
-		Audience string
+		Audience string `json:"audience"`
 	}
 )
 
 func (a *api) addHandlers(r *mux.Router) {
-	r = r.PathPrefix(otfapi.DefaultBasePath).Subrouter()
+	r = r.PathPrefix(otfhttp.APIBasePath).Subrouter()
 
-	// agents
 	r.HandleFunc("/agents/register", a.registerAgent).Methods("POST")
-	r.HandleFunc("/agents/jobs", a.getJobs).Methods("GET")
 	r.HandleFunc("/agents/status", a.updateAgentStatus).Methods("POST")
+	r.HandleFunc("/agents/await-allocated-jobs", a.awaitAllocatedJobs).Methods("GET")
 	r.HandleFunc("/jobs/start", a.startJob).Methods("POST")
 	r.HandleFunc("/jobs/finish", a.finishJob).Methods("POST")
+	r.HandleFunc("/jobs/{job_id}", a.getJob).Methods("GET")
 	r.HandleFunc("/jobs/{job_id}/await-signal", a.awaitJobSignal).Methods("GET")
 	r.HandleFunc("/jobs/{job_id}/dynamic-credentials", a.generateDynamicCredentialsToken).Methods("POST")
 
@@ -55,7 +56,7 @@ func (a *api) addHandlers(r *mux.Router) {
 }
 
 func (a *api) registerAgent(w http.ResponseWriter, r *http.Request) {
-	var opts registerOptions
+	var opts RegisterRunnerOptions
 	if err := json.NewDecoder(r.Body).Decode(&opts); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -69,7 +70,7 @@ func (a *api) registerAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	opts.IPAddress = &ip
 
-	agent, err := a.Service.register(r.Context(), opts)
+	agent, err := a.Service.Register(r.Context(), opts)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -78,7 +79,7 @@ func (a *api) registerAgent(w http.ResponseWriter, r *http.Request) {
 	a.Respond(w, r, agent, http.StatusCreated)
 }
 
-func (a *api) getJobs(w http.ResponseWriter, r *http.Request) {
+func (a *api) awaitAllocatedJobs(w http.ResponseWriter, r *http.Request) {
 	// retrieve runner, which contains ID of calling agent
 	runner, err := runnerFromContext(r.Context())
 	if err != nil {
@@ -95,12 +96,29 @@ func (a *api) getJobs(w http.ResponseWriter, r *http.Request) {
 	a.Respond(w, r, jobs, http.StatusOK)
 }
 
+func (a *api) getJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := decode.ID("job_id", r)
+	if err != nil {
+		tfeapi.Error(w, err)
+		return
+	}
+
+	job, err := a.Service.GetJob(r.Context(), jobID)
+	if err != nil {
+		tfeapi.Error(w, err)
+		return
+	}
+
+	a.Respond(w, r, job, http.StatusOK)
+}
+
 func (a *api) awaitJobSignal(w http.ResponseWriter, r *http.Request) {
 	jobID, err := decode.ID("job_id", r)
 	if err != nil {
 		tfeapi.Error(w, err)
 		return
 	}
+
 	signal, err := a.Service.awaitJobSignal(r.Context(), jobID)()
 	if err != nil {
 		tfeapi.Error(w, err)
@@ -183,18 +201,20 @@ func (a *api) finishJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) generateDynamicCredentialsToken(w http.ResponseWriter, r *http.Request) {
-	var params struct {
-		JobID resource.TfeID `schema:"job_id"`
-		generateDynamicCredentialsTokenParams
-	}
-	if err := decode.All(&params, r); err != nil {
+	jobID, err := decode.ID("job_id", r)
+	if err != nil {
 		tfeapi.Error(w, err)
+		return
+	}
+	var params generateDynamicCredentialsTokenParams
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		tfeapi.Error(w, err, tfeapi.WithStatus(http.StatusUnprocessableEntity))
 		return
 	}
 	token, err := a.Service.GenerateDynamicCredentialsToken(
 		r.Context(),
-		params.JobID,
-		params.generateDynamicCredentialsTokenParams.Audience,
+		jobID,
+		params.Audience,
 	)
 	if err != nil {
 		tfeapi.Error(w, err)

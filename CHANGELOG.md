@@ -1,5 +1,277 @@
 # Changelog
 
+## [0.5.14](https://github.com/leg100/otf/compare/v0.5.13...v0.5.14) (2026-02-14)
+
+
+### Bug Fixes
+
+* force helm chart release ([16fb604](https://github.com/leg100/otf/commit/16fb604008e6cb84ad740eb40ed957ff1e1c3470))
+
+
+### Miscellaneous
+
+* bump helm charts with app version v0.5.13 ([bdf950f](https://github.com/leg100/otf/commit/bdf950fddbed894c2fe0ebee16e96ac9a6e6ae1c))
+
+## [0.5.13](https://github.com/leg100/otf/compare/v0.5.12...v0.5.13) (2026-02-13)
+
+
+### Bug Fixes
+
+* broken github workflow ([bf659cc](https://github.com/leg100/otf/commit/bf659cc65d60593ef4c4e95bd6501460d29b1716))
+* helm charts not being automatically updated upon release ([bb35d8d](https://github.com/leg100/otf/commit/bb35d8d9fce25f4536577271e00e4c5ed521eaed))
+
+
+### Miscellaneous
+
+* bump dependencies ([6168747](https://github.com/leg100/otf/commit/616874790518d905ddda66c6b585bedb23780c37))
+* bump to go1.26 and adopt new func ([25c12ec](https://github.com/leg100/otf/commit/25c12ec064046154f137d7d2381a1a74082df3ec))
+
+## [0.5.12](https://github.com/leg100/otf/compare/v0.5.11...v0.5.12) (2026-02-12)
+
+
+### Bug Fixes
+
+* don't append api. to github enterprise URLs ([b8c9b06](https://github.com/leg100/otf/commit/b8c9b062ab21abf7ec6111f484762094f2a5060d))
+
+## [0.5.11](https://github.com/leg100/otf/compare/v0.5.10...v0.5.11) (2026-02-12)
+
+
+### Bug Fixes
+
+* **api-client:** allow '@' in state output map keys ([79458e6](https://github.com/leg100/otf/commit/79458e648541824970ccc7344b511cc8815b14c8))
+
+## [0.5.10](https://github.com/leg100/otf/compare/v0.5.9...v0.5.10) (2026-02-11)
+
+
+### Bug Fixes
+
+* allow '@' in state output map keys ([9f838ee](https://github.com/leg100/otf/commit/9f838eed1ed7d3502d6f5f9c193f7c30b559aae7))
+* **api-client:** provide more informative error logging ([27d7888](https://github.com/leg100/otf/commit/27d7888da0c2f07283e682cc07d7876b589ed461))
+* **api:** log error when response cannot be marshaled ([fef1bc7](https://github.com/leg100/otf/commit/fef1bc79ddc13a6b0d23d820badacdc009b8cf2a))
+
+## [0.5.9](https://github.com/leg100/otf/compare/v0.5.8...v0.5.9) (2026-02-10)
+
+
+### Bug Fixes
+
+* force otfd helm chart release ([a4f6e6c](https://github.com/leg100/otf/commit/a4f6e6cd363738255984b51e2013de8ce6495a54))
+* remove unnecessary string casting ([facada8](https://github.com/leg100/otf/commit/facada8c07bbe4b206b571fd7b2df2639d6b53af))
+
+## [0.5.8](https://github.com/leg100/otf/compare/v0.5.7...v0.5.8) (2026-02-09)
+
+
+### Features
+
+* **ui:** revamp menu layout ([#884](https://github.com/leg100/otf/issues/884)) ([0510bce](https://github.com/leg100/otf/commit/0510bce29341a11795147387754049b91b714d9a))
+
+
+### Bug Fixes
+
+* **charts/otfd:** Adjust indentation for volume mounts in deployment.yaml ([#881](https://github.com/leg100/otf/issues/881)) ([67341d3](https://github.com/leg100/otf/commit/67341d38f2decd7a206921595bca217d8efa8462))
+* **dockerfile:** bump alpine version and upgrade base packages to fix critical CVE ([#882](https://github.com/leg100/otf/issues/882)) ([3e730d7](https://github.com/leg100/otf/commit/3e730d73468d32cb0e93a9207393de91a2bfe143))
+* sync layout templ code ([3cf0505](https://github.com/leg100/otf/commit/3cf0505816df8a5d475488d06ecf290c70856885))
+
+## [0.5.7](https://github.com/leg100/otf/compare/v0.5.6...v0.5.7) (2026-02-01)
+
+
+### Bug Fixes
+
+* **dockerfile:** helm provider requires home dir ([86bf7b7](https://github.com/leg100/otf/commit/86bf7b7269843e11cc1454e350298c8d8afecbcf))
+* tags regex empty string and non-zero trigger patterns should not throw error ([#874](https://github.com/leg100/otf/issues/874)) ([741fc3b](https://github.com/leg100/otf/commit/741fc3bffbdebdd5bab4e9d649f9a48cd398811f))
+* **ui:** auto show force cancel button after cool off period ([72b74ca](https://github.com/leg100/otf/commit/72b74caa3a636e7069ebf86dc1773d7c726238a3))
+
+
+### Miscellaneous
+
+* parameterize ld flags in makefile ([92fd5a4](https://github.com/leg100/otf/commit/92fd5a456eb817e11d6537772e5938b9a497661a))
+* remove unnecessary install-linter make task ([dc36aac](https://github.com/leg100/otf/commit/dc36aaca47a3c4595fd626806de02a2e9a031704))
+
+## [0.5.6](https://github.com/leg100/otf/compare/v0.5.5...v0.5.6) (2026-01-28)
+
+
+### Bug Fixes
+
+* **ci:** skip redundant helm chart test ([8f90e9e](https://github.com/leg100/otf/commit/8f90e9e826d7827915d6d7f1c3a429572918aaf8))
+
+## [0.5.5](https://github.com/leg100/otf/compare/v0.5.4...v0.5.5) (2026-01-28)
+
+
+### Bug Fixes
+
+* **ci:** support multi platform docker builds ([6af386f](https://github.com/leg100/otf/commit/6af386f9a580465133d6a5cbc6ffdfb01c557e73))
+
+## [0.5.4](https://github.com/leg100/otf/compare/v0.5.3...v0.5.4) (2026-01-28)
+
+
+### Bug Fixes
+
+* **ci:** disable sbom for docker images ([7d56ea8](https://github.com/leg100/otf/commit/7d56ea8555c5484046919fbbc940b5c90cd990b0))
+
+## [0.5.3](https://github.com/leg100/otf/compare/v0.5.2...v0.5.3) (2026-01-27)
+
+
+### Bug Fixes
+
+* **ci:** downgrade broken release please action ([f886124](https://github.com/leg100/otf/commit/f886124ea6f560f1b5be94afd1f6d33c203d8b4b))
+
+## [0.5.2](https://github.com/leg100/otf/compare/v0.5.1...v0.5.2) (2026-01-27)
+
+
+### Bug Fixes
+
+* **ci:** broke release process ([64716f9](https://github.com/leg100/otf/commit/64716f9bf7ce4edfb26d038fae518cb8e0cd24c8))
+
+## [0.5.1](https://github.com/leg100/otf/compare/v0.5.0...v0.5.1) (2026-01-26)
+
+
+### Features
+
+* docker compose install ([#862](https://github.com/leg100/otf/issues/862)) ([c9946a6](https://github.com/leg100/otf/commit/c9946a6858f1c60d876eb245959174d6526d231b)), closes [#850](https://github.com/leg100/otf/issues/850)
+* execute runs in kubernetes jobs ([#867](https://github.com/leg100/otf/issues/867)) ([0d22da8](https://github.com/leg100/otf/commit/0d22da8d893236173f9f6f118d050c45fd41b830)), closes [#866](https://github.com/leg100/otf/issues/866)
+* passthrough command-line parameters which affect planning ([#859](https://github.com/leg100/otf/issues/859)) ([b9405d0](https://github.com/leg100/otf/commit/b9405d09b58431a820a0bec94969d929dc5bd436))
+* run as non-root user in container ([#823](https://github.com/leg100/otf/issues/823)) ([06ced51](https://github.com/leg100/otf/commit/06ced5159e610998833a5a5ffad36395fbf0ff18))
+
+
+### Bug Fixes
+
+* **agent:** don't panic when server goes offline ([6017b6e](https://github.com/leg100/otf/commit/6017b6e0a77884709b0c53eea8c14e4ef84fcde8))
+* **agent:** dynamic provider creds broken on agents ([acafaee](https://github.com/leg100/otf/commit/acafaee03f50dd86b179605604faa4fac6d70dc9))
+* avoid nil ptr ref panics when watching run ([cd5694d](https://github.com/leg100/otf/commit/cd5694dca4b0d5d7b0147ed056508ffeb4d686c9))
+* copy clipboard notification clipped ([3703ad4](https://github.com/leg100/otf/commit/3703ad471c0205b9bfec386d9190bcc90ccac302))
+* **ui:** cancel run button sometimes doesn't do anything ([d29a0ef](https://github.com/leg100/otf/commit/d29a0ef7ea55abf4060b190365c799ea3cc1c159))
+
+
+### Miscellaneous
+
+* add more logging and error context ([a7adab5](https://github.com/leg100/otf/commit/a7adab5013f8054b82f821d2485e3c32c185394f))
+* bump everything ([73a0f6a](https://github.com/leg100/otf/commit/73a0f6ad2ca3113263ba29036705e83000c8b6c5))
+* **ci:** update helm-docs command ([8c6a157](https://github.com/leg100/otf/commit/8c6a1574dd7de7ddabdd2fbe895891c339d38f57))
+
+## [0.5.0](https://github.com/leg100/otf/compare/v0.4.10...v0.5.0) (2025-12-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* don't ignore custom hostname overrides for VCS providers ([#855](https://github.com/leg100/otf/issues/855))
+
+### Bug Fixes
+
+* don't ignore custom hostname overrides for VCS providers ([#855](https://github.com/leg100/otf/issues/855)) ([c25801e](https://github.com/leg100/otf/commit/c25801e2ce4dc2289ee3d67bd0bf3f0cf62f8302))
+* run error tests ([be7d10d](https://github.com/leg100/otf/commit/be7d10d47dcadd6f6cc544b778634d51e99a06f1))
+
+## [0.4.10](https://github.com/leg100/otf/compare/v0.4.9...v0.4.10) (2025-12-14)
+
+
+### Bug Fixes
+
+* enrich forgejo list repos errors ([9cdf6f2](https://github.com/leg100/otf/commit/9cdf6f23745183d24ae230639d7eb968f3a703b3))
+
+
+### Miscellaneous
+
+* update Alpine to v3.23 ([#849](https://github.com/leg100/otf/issues/849)) ([1721470](https://github.com/leg100/otf/commit/17214707b969712dcff77d2553b992e875dac1e4))
+
+## [0.4.9](https://github.com/leg100/otf/compare/v0.4.8...v0.4.9) (2025-11-08)
+
+
+### Features
+
+* delete configs older than a user-specified duration ([#845](https://github.com/leg100/otf/issues/845)) ([b54bd3f](https://github.com/leg100/otf/commit/b54bd3ff2548d0bac7c70e4f3e9409e69d1537fe))
+
+## [0.4.8](https://github.com/leg100/otf/compare/v0.4.7...v0.4.8) (2025-11-02)
+
+
+### Features
+
+* delete runs after user-specified time period ([#844](https://github.com/leg100/otf/issues/844)) ([fb5547c](https://github.com/leg100/otf/commit/fb5547c75f4f6872c69e59a376b8cf0ddf25cb27)), closes [#834](https://github.com/leg100/otf/issues/834)
+
+
+### Bug Fixes
+
+* **ui:** polling table not sending page number param ([7591827](https://github.com/leg100/otf/commit/7591827fee43539c1d72eb373899607172abda83))
+* workspace sql cascade set null on user or run deletion ([687c35c](https://github.com/leg100/otf/commit/687c35c37cacc499f8b42234083ad1e6fe4b00ec))
+
+
+### Miscellaneous
+
+* document dynamic credentials test setup ([efecef2](https://github.com/leg100/otf/commit/efecef20d7b5a8539ce5b77c83751a9cc9ae1cef))
+* remove unnecessary double html error ([53cb12d](https://github.com/leg100/otf/commit/53cb12d25d00c664daf7ebe7eb7fcd38e609fad5))
+
+## [0.4.7](https://github.com/leg100/otf/compare/v0.4.6...v0.4.7) (2025-10-10)
+
+
+### Features
+
+* **ui:** let browser cache responses for better perf ([c76a29a](https://github.com/leg100/otf/commit/c76a29a8e4934a78cfccfec253b3587f3471b8b6))
+* **ui:** use flash messages for POST errors ([23a969f](https://github.com/leg100/otf/commit/23a969ff1712139fbc233f93ff0e26d3f30fb718))
+
+
+### Bug Fixes
+
+* exclude websockets from etag middleware ([2d2567c](https://github.com/leg100/otf/commit/2d2567c9cc6763f3f3af841dbdab23651d9e7f47))
+* UI crashes when forgejo VCS provider fails to connect ([#838](https://github.com/leg100/otf/issues/838)) ([d4ba67e](https://github.com/leg100/otf/commit/d4ba67e5958ab33e5d87c342f6151e2116473f16)), closes [#837](https://github.com/leg100/otf/issues/837)
+
+
+### Miscellaneous
+
+* don't raise error unnecessarilyi ([720b93b](https://github.com/leg100/otf/commit/720b93b6a8e9d9e35eacefd91889d91753a64591))
+* drop bubblewrap support ([eb747d1](https://github.com/leg100/otf/commit/eb747d16a8a2dd4dd661a8b72647d8ba717a0276))
+* fix linting errors ([e7a75a9](https://github.com/leg100/otf/commit/e7a75a99cb128904f8fc7eff54d2b291e2cde5f8))
+* remove unused go.mod replace directives ([74505b3](https://github.com/leg100/otf/commit/74505b3714947ed601af303129ae99c089508872))
+* use constants where they already exist ([4551222](https://github.com/leg100/otf/commit/45512221b1708a3fbd00881f225d698753b0b83a))
+
+## [0.4.6](https://github.com/leg100/otf/compare/v0.4.5...v0.4.6) (2025-10-01)
+
+
+### Bug Fixes
+
+* add caching to speed up run listings ([cbfeceb](https://github.com/leg100/otf/commit/cbfeceb054162e6e2a7243391265f30003bea761))
+* add indices to boost perf and reduce db load ([04678fc](https://github.com/leg100/otf/commit/04678fc3a8d852d8619305ae181424e47a296090))
+* avoid websocket handler infinite loop ([92ea015](https://github.com/leg100/otf/commit/92ea01547fd9c954bb7b56b66ac0e8ba331c6363))
+* improve performance of run metrics collector ([d421c16](https://github.com/leg100/otf/commit/d421c16756e1f2bd050b4ecb6cf97e43b57264e0))
+* update helm chart lock file ([b5aa360](https://github.com/leg100/otf/commit/b5aa360a255d5d2b7c2f378124bd2b7c1e0d4fd6))
+
+
+### Miscellaneous
+
+* change default engine notice wording ([620672f](https://github.com/leg100/otf/commit/620672fdabfa5a77095c96d6b8e21be35b49354f))
+
+## [0.4.5](https://github.com/leg100/otf/compare/v0.4.4...v0.4.5) (2025-09-30)
+
+
+### Bug Fixes
+
+* swap out bitnami postgres helm chart ([539cd9c](https://github.com/leg100/otf/commit/539cd9c8c8fe9f074350c467a3430aee74dfb510))
+
+## [0.4.4](https://github.com/leg100/otf/compare/v0.4.3...v0.4.4) (2025-09-29)
+
+
+### Bug Fixes
+
+* module markdown rendering ([#831](https://github.com/leg100/otf/issues/831)) ([90700f1](https://github.com/leg100/otf/commit/90700f142a6ec6b81f82ad86ddc040b658a8dceb)), closes [#820](https://github.com/leg100/otf/issues/820)
+* remove unnecessary tool install make tasks ([acd9d6f](https://github.com/leg100/otf/commit/acd9d6f19ddd2ba9ceb9ffc6c564ed50571f15c2))
+
+
+### Miscellaneous
+
+* bump daisyui version ([dfd3904](https://github.com/leg100/otf/commit/dfd3904bffa72a4347cd9c054c32e43bc377de12))
+* bump templ version ([15768e0](https://github.com/leg100/otf/commit/15768e0992164e28d86c2a8d3b5ee6266f23787c))
+
+## [0.4.3](https://github.com/leg100/otf/compare/v0.4.2...v0.4.3) (2025-09-27)
+
+
+### Bug Fixes
+
+* azure dyn cred provider no kid found error ([#828](https://github.com/leg100/otf/issues/828)) ([6d55d8e](https://github.com/leg100/otf/commit/6d55d8e78fcb1e787a150c6a3e9bbb241e1147dc))
+
+## [0.4.2](https://github.com/leg100/otf/compare/v0.4.1...v0.4.2) (2025-09-23)
+
+
+### Bug Fixes
+
+* AWS dynamic provider credentials invalid apply absolute paths ([#822](https://github.com/leg100/otf/issues/822)) ([fc3162a](https://github.com/leg100/otf/commit/fc3162a35e8b51ff5d155f0eb097c3f96a03786e))
+* handle tfe provider agent pool ID empty string gracefully ([48c7f45](https://github.com/leg100/otf/commit/48c7f45a3e2ac729a7ad8051d0dd3ed9629aa9a9))
+
 ## [0.4.1](https://github.com/leg100/otf/compare/v0.4.0...v0.4.1) (2025-08-27)
 
 

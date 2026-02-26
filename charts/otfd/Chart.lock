@@ -1,6 +1,9 @@
 dependencies:
-- name: postgresql
-  repository: https://charts.bitnami.com/bitnami
-  version: 12.8.2
-digest: sha256:d57580060f45e1f77ee25bb1e1f8ff49261e339c17243ab2866efd15384cbb88
-generated: "2023-08-11T14:22:42.591649893+01:00"
+- name: postgres
+  repository: file://charts/postgres
+  version: 0.1.0
+- name: runner
+  repository: file://../libs/runner
+  version: 0.1.0
+digest: sha256:8424403c37406c83d418905adae7c68f5de2355ed19ccb1b88c5b035c9bc3ab4
+generated: "2026-01-18T21:24:34.40792782Z"

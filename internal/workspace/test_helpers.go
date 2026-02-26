@@ -6,13 +6,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/authz"
 	"github.com/leg100/otf/internal/engine"
 	"github.com/leg100/otf/internal/organization"
 	"github.com/leg100/otf/internal/pubsub"
 	"github.com/leg100/otf/internal/resource"
-	"github.com/leg100/otf/internal/team"
 	"github.com/leg100/otf/internal/vcs"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +24,7 @@ func NewTestWorkspace(t *testing.T, opts *CreateOptions) *Workspace {
 		opts.Organization = &name
 	}
 	if opts.Name == nil {
-		opts.Name = internal.Ptr(uuid.NewString())
+		opts.Name = new(uuid.NewString())
 	}
 
 	factory := &factory{
@@ -108,37 +106,6 @@ func (f *FakeService) SetPermission(ctx context.Context, workspaceID, teamID res
 
 func (f *FakeService) UnsetPermission(ctx context.Context, workspaceID, teamID resource.TfeID) error {
 	return nil
-}
-
-type fakeVCSProviderService struct {
-	provider  *vcs.Provider
-	providers []*vcs.Provider
-}
-
-func (f *fakeVCSProviderService) Get(ctx context.Context, providerID resource.TfeID) (*vcs.Provider, error) {
-	return f.provider, nil
-}
-
-func (f *fakeVCSProviderService) List(context.Context, organization.Name) ([]*vcs.Provider, error) {
-	return f.providers, nil
-}
-
-type fakeVCSClient struct {
-	repos []vcs.Repo
-
-	vcs.Client
-}
-
-func (f *fakeVCSClient) ListRepositories(ctx context.Context, opts vcs.ListRepositoriesOptions) ([]vcs.Repo, error) {
-	return f.repos, nil
-}
-
-type fakeTeamService struct {
-	teams []*team.Team
-}
-
-func (f *fakeTeamService) List(context.Context, organization.Name) ([]*team.Team, error) {
-	return f.teams, nil
 }
 
 type fakeReleasesService struct {

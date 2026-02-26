@@ -13,11 +13,6 @@ import (
 	"github.com/leg100/otf/internal/tfeapi"
 )
 
-const (
-	GithubAPIURL  = "https://api.github.com"
-	GithubHTTPURL = "https://github.com"
-)
-
 type tfe struct {
 	*Service
 	*tfeapi.Responder
@@ -87,7 +82,7 @@ func (a *tfe) createOAuthClient(w http.ResponseWriter, r *http.Request) {
 
 	// default parameters
 	if params.Name == nil {
-		params.Name = internal.Ptr("")
+		params.Name = new("")
 	}
 
 	oauthClient, err := a.Create(r.Context(), CreateOptions{

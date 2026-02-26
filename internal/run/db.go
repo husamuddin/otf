@@ -23,8 +23,7 @@ import (
 
 // pgdb is a database of runs on postgres
 type pgdb struct {
-	*sql.DB       // provides access to generated SQL queries
-	configService *configversion.Service
+	*sql.DB // provides access to generated SQL queries
 }
 
 // CreateRun persists a Run to the DB.
@@ -271,8 +270,7 @@ WHERE run_id = $2
 			if run.CancelSignaledAt != cancelSignaledAt && run.CancelSignaledAt != nil {
 				_, err := db.Exec(ctx, `
 UPDATE runs
-SET
-    cancel_signaled_at = $1
+SET cancel_signaled_at = $1
 WHERE run_id = $2
 `,
 					*run.CancelSignaledAt,
@@ -286,6 +284,21 @@ WHERE run_id = $2
 			return nil
 		},
 	)
+}
+
+// triggerEvent triggers a database event for a run, by executing an no-op
+// update.
+func (db *pgdb) triggerEvent(ctx context.Context, runID resource.TfeID) error {
+	return db.Tx(ctx, func(ctx context.Context) error {
+		_, err := db.Exec(ctx, `
+UPDATE runs
+SET run_id = run_id
+WHERE run_id = $1
+`,
+			runID,
+		)
+		return err
+	})
 }
 
 func (db *pgdb) CreatePlanReport(ctx context.Context, runID resource.TfeID, resource, output Report) error {
@@ -421,6 +434,7 @@ AND runs.status                  LIKE ANY($5::text[])
 AND runs.plan_only::text         LIKE ANY($6::text[])
 AND (($7::text IS NULL) OR ia.commit_sha = $7)
 AND (($8::text IS NULL) OR ia.sender_username = $8)
+AND (($11::timestamptz IS NULL) OR runs.created_at < $11::timestamptz)
 ORDER BY runs.created_at DESC
 LIMIT $9::int
 OFFSET $10::int
@@ -435,6 +449,7 @@ OFFSET $10::int
 		opts.VCSUsername,
 		sql.GetLimit(opts.PageOptions),
 		sql.GetOffset(opts.PageOptions),
+		opts.BeforeCreatedAt,
 	)
 	items, err := sql.CollectRows(rows, db.scan)
 	if err != nil {
@@ -454,6 +469,7 @@ AND runs.status                  LIKE ANY($5::text[])
 AND runs.plan_only::text         LIKE ANY($6::text[])
 AND (($7::text IS NULL) OR ia.commit_sha = $7)
 AND (($8::text IS NULL) OR ia.sender_username = $8)
+AND (($9::timestamptz IS NULL) OR runs.created_at < $9::timestamptz)
 `,
 
 		[]string{organization},
@@ -464,11 +480,25 @@ AND (($8::text IS NULL) OR ia.sender_username = $8)
 		[]string{planOnly},
 		opts.CommitSHA,
 		opts.VCSUsername,
+		opts.BeforeCreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("counting runs: %w", err)
 	}
-	return resource.NewPage(items, opts.PageOptions, internal.Ptr(count)), nil
+	return resource.NewPage(items, opts.PageOptions, new(count)), nil
+}
+
+// listStatuses lists the ID and status of every run.
+func (db *pgdb) listStatuses(ctx context.Context) ([]status, error) {
+	rows := db.Query(ctx, `
+SELECT run_id, status
+FROM runs
+`)
+	items, err := sql.CollectRows[status](rows, pgx.RowToStructByName)
+	if err != nil {
+		return nil, fmt.Errorf("querying runs: %w", err)
+	}
+	return items, nil
 }
 
 // get retrieves a run using the get options
@@ -829,7 +859,6 @@ func (db *pgdb) scan(row pgx.CollectableRow) (*Run, error) {
 		AutoApply:              m.AutoApply,
 		PlanOnly:               m.PlanOnly,
 		Source:                 m.Source,
-		SourceIcon:             db.configService.GetSourceIcon(m.Source),
 		Status:                 m.Status,
 		WorkspaceID:            m.WorkspaceID,
 		ConfigurationVersionID: m.ConfigurationVersionID,

@@ -7,10 +7,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-logr/logr"
+	"github.com/allegro/bigcache"
 	"github.com/gorilla/mux"
 	"github.com/leg100/otf/internal"
-	"github.com/leg100/otf/internal/api"
 	"github.com/leg100/otf/internal/authenticator"
 	"github.com/leg100/otf/internal/authz"
 	"github.com/leg100/otf/internal/configversion"
@@ -24,6 +23,7 @@ import (
 	"github.com/leg100/otf/internal/http"
 	"github.com/leg100/otf/internal/inmem"
 	"github.com/leg100/otf/internal/loginserver"
+	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/module"
 	"github.com/leg100/otf/internal/notifications"
 	"github.com/leg100/otf/internal/organization"
@@ -36,6 +36,7 @@ import (
 	"github.com/leg100/otf/internal/team"
 	"github.com/leg100/otf/internal/tfeapi"
 	"github.com/leg100/otf/internal/tokens"
+	"github.com/leg100/otf/internal/ui"
 	"github.com/leg100/otf/internal/user"
 	"github.com/leg100/otf/internal/variable"
 	"github.com/leg100/otf/internal/vcs"
@@ -68,13 +69,14 @@ type (
 		Connections   *connections.Service
 		System        *internal.HostnameService
 
-		// ListenAddress is thelistening address of the daemon's http server,
+		// ListenAddress is the listening address of the daemon's http server,
 		// e.g. localhost:8080
 		ListenAddress *net.TCPAddr
 
 		handlers []internal.Handlers
 		listener *sql.Listener
 		runner   *runner.Runner
+		cache    *bigcache.BigCache
 	}
 )
 
@@ -88,7 +90,7 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 	if err := cfg.Valid(); err != nil {
 		return nil, err
 	}
-	logger.V(1).Info("set engine type", "engine", cfg.DefaultEngine)
+	logger.V(1).Info("set default engine", "engine", cfg.DefaultEngine)
 
 	hostnameService := internal.NewHostnameService(cfg.Host)
 	hostnameService.SetWebhookHostname(cfg.WebhookHost)
@@ -108,7 +110,7 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 	listener := sql.NewListener(logger, db)
 
 	// responder responds to TFE API requests
-	responder := tfeapi.NewResponder()
+	responder := tfeapi.NewResponder(logger)
 
 	// Setup url signer
 	signer := internal.NewSigner(cfg.Secret)
@@ -243,6 +245,7 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 		EngineService:        engineService,
 		TokensService:        tokensService,
 		UsersService:         userService,
+		DaemonCtx:            ctx,
 	})
 	moduleService := module.NewService(module.Options{
 		Logger:             logger,
@@ -341,18 +344,22 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 		return nil, fmt.Errorf("registering github oauth client: %w", err)
 	}
 
-	runner, err := runner.NewServerRunner(runner.ServerRunnerOptions{
-		Logger:     logger,
-		Config:     cfg.RunnerConfig,
-		Runners:    runnerService,
-		Workspaces: workspaceService,
-		Variables:  variableService,
-		State:      stateService,
-		Configs:    configService,
-		Runs:       runService,
-		Jobs:       runnerService,
-		Server:     hostnameService,
-	})
+	serverRunner, err := runner.New(
+		logger,
+		runnerService,
+		func(_ string) runner.OperationClient {
+			return runner.OperationClient{
+				Workspaces: workspaceService,
+				Variables:  variableService,
+				State:      stateService,
+				Configs:    configService,
+				Runs:       runService,
+				Jobs:       runnerService,
+				Server:     hostnameService,
+			}
+		},
+		cfg.RunnerConfig,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -383,11 +390,33 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 		}),
 		configService,
 		notificationService,
-		githubAppService,
 		runnerService,
 		disco.Service{},
-		&api.Handlers{},
 		&tfeapi.Handlers{},
+		ui.NewHandlers(
+			logger,
+			runService,
+			workspaceService,
+			userService,
+			teamService,
+			orgService,
+			moduleService,
+			vcsService,
+			stateService,
+			runnerService,
+			githubAppService,
+			engineService,
+			configService,
+			hostnameService,
+			tokensService,
+			authorizer,
+			authenticatorService,
+			variableService,
+			cfg.GithubHostname,
+			cfg.SkipTLSVerification,
+			cfg.SiteToken,
+			cfg.RestrictOrganizationCreation,
+		),
 		&github.AppEventHandler{
 			Logger:     logger,
 			Publisher:  vcsEventBroker,
@@ -419,8 +448,9 @@ func New(ctx context.Context, logger logr.Logger, cfg Config) (*Daemon, error) {
 		Connections:   connectionService,
 		Runners:       runnerService,
 		DB:            db,
-		runner:        runner,
+		runner:        serverRunner,
 		listener:      listener,
+		cache:         cache,
 	}, nil
 }
 
@@ -433,6 +463,13 @@ func (d *Daemon) Start(ctx context.Context, started chan struct{}) error {
 	// close all db connections upon exit
 	defer d.DB.Close()
 
+	// garbage collect cache upon exit
+	defer func() {
+		if err := d.cache.Close(); err != nil {
+			d.Error(err, "closing cache")
+		}
+	}()
+
 	// Construct web server and start listening on port
 	server, err := http.NewServer(d.Logger, http.ServerConfig{
 		SSL:                  d.SSL,
@@ -441,7 +478,6 @@ func (d *Daemon) Start(ctx context.Context, started chan struct{}) error {
 		EnableRequestLogging: d.EnableRequestLogging,
 		Middleware:           []mux.MiddlewareFunc{d.Tokens.Middleware()},
 		Handlers:             d.handlers,
-		AllowedOrigins:       d.AllowedOrigins,
 	})
 	if err != nil {
 		return fmt.Errorf("setting up http server: %w", err)
@@ -492,9 +528,7 @@ func (d *Daemon) Start(ctx context.Context, started chan struct{}) error {
 		{
 			Name:   "run_metrics",
 			Logger: d.Logger,
-			System: &run.MetricsCollector{
-				Service: d.Runs,
-			},
+			System: d.Runs.MetricsCollector,
 		},
 		{
 			Name:   "timeout",
@@ -507,6 +541,26 @@ func (d *Daemon) Start(ctx context.Context, started chan struct{}) error {
 				PlanningTimeout:       d.PlanningTimeout,
 				ApplyingTimeout:       d.ApplyingTimeout,
 				Runs:                  d.Runs,
+			},
+		},
+		{
+			Name:   "run-deleter",
+			Logger: d.Logger,
+			System: &resource.Deleter[*run.Run]{
+				Logger:                d.Logger.WithValues("component", "run-deleter"),
+				OverrideCheckInterval: d.OverrideDeleterInterval,
+				Client:                d.Runs,
+				AgeThreshold:          d.DeleteRunsAfter,
+			},
+		},
+		{
+			Name:   "config-deleter",
+			Logger: d.Logger,
+			System: &resource.Deleter[*configversion.ConfigurationVersion]{
+				Logger:                d.Logger.WithValues("component", "config-deleter"),
+				OverrideCheckInterval: d.OverrideDeleterInterval,
+				Client:                d.Configs,
+				AgeThreshold:          d.DeleteConfigsAfter,
 			},
 		},
 		{

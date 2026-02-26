@@ -20,14 +20,18 @@ import (
 	"github.com/fatih/color"
 	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/authz"
+	"github.com/leg100/otf/internal/configversion"
 	"github.com/leg100/otf/internal/dynamiccreds"
 	"github.com/leg100/otf/internal/engine"
+	otfhttp "github.com/leg100/otf/internal/http"
 	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/resource"
 	runpkg "github.com/leg100/otf/internal/run"
 	"github.com/leg100/otf/internal/state"
 	"github.com/leg100/otf/internal/variable"
 	"github.com/leg100/otf/internal/workspace"
+	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -51,61 +55,45 @@ type (
 		logr.Logger
 		*workdir
 
-		Sandbox     bool // isolate privileged ops within sandbox
-		Debug       bool // toggle debug mode
-		PluginCache bool // toggle use of engine's shared plugin cache
-
 		job           *Job
 		run           *runpkg.Run
 		canceled      bool
 		ctx           context.Context
 		cancelfn      context.CancelFunc
 		out           io.Writer
-		enginePath    string
 		envs          []string
 		terraformVars []*variable.Variable
 		proc          *os.Process
 		downloader    downloader
-		isAgent       bool
-		engineBinDir  string
+		cfg           OperationConfig
+		enginePath    string // path of downloaded engine
 
-		runs       runClient
-		workspaces workspaceClient
-		variables  variablesClient
-		state      stateClient
-		configs    configClient
-		server     hostnameClient
-		jobs       operationJobsClient
+		client OperationClient
 	}
 
-	operationOptions struct {
-		Sandbox      bool   // isolate privileged ops within sandbox
-		Debug        bool   // toggle debug mode
-		PluginCache  bool   // toggle use of engine's shared plugin cache
-		engineBinDir string // destination directory for engine binaries
-
-		logger   logr.Logger
-		job      *Job
-		jobToken []byte
-		isAgent  bool
-
-		runs       runClient
-		workspaces workspaceClient
-		variables  variablesClient
-		state      stateClient
-		configs    configClient
-		server     hostnameClient
-		jobs       operationJobsClient
+	OperationConfig struct {
+		Debug          bool   // toggle debug mode
+		PluginCache    bool   // toggle use of engine's shared plugin cache
+		PluginCacheDir string // directory for shared plugin cache.
+		EngineBinDir   string // destination directory for engine binaries
+		IsAgent        bool   // set to true if operation is running on an agent
 	}
 
-	operationSpawner interface {
-		newOperation(job *Job, jobToken []byte) (*operation, error)
+	OperationOptions struct {
+		OperationConfig
+
+		Logger   logr.Logger
+		Job      *Job
+		JobToken []byte
+		Client   OperationClient
 	}
 
 	operationJobsClient interface {
+		GetJob(ctx context.Context, jobID resource.TfeID) (*Job, error)
+		GenerateDynamicCredentialsToken(ctx context.Context, jobID resource.TfeID, audience string) ([]byte, error)
+
 		awaitJobSignal(ctx context.Context, jobID resource.TfeID) func() (jobSignal, error)
 		finishJob(ctx context.Context, jobID resource.TfeID, opts finishJobOptions) error
-		GenerateDynamicCredentialsToken(ctx context.Context, jobID resource.TfeID, audience string) ([]byte, error)
 	}
 
 	// downloader downloads engine versions
@@ -144,51 +132,89 @@ type (
 	}
 )
 
-func newOperation(opts operationOptions) *operation {
+func defaultOperationConfig() OperationConfig {
+	return OperationConfig{
+		PluginCacheDir: filepath.Join(os.TempDir(), "plugin-cache"),
+		EngineBinDir:   engine.DefaultBinDir,
+	}
+}
+
+func RegisterOperationFlags(flags *pflag.FlagSet, cfg *OperationConfig) {
+	flags.BoolVar(&cfg.Debug, "debug", cfg.Debug, "Enable runner debug mode which dumps additional info to terraform runs.")
+	flags.BoolVar(&cfg.PluginCache, "plugin-cache", cfg.PluginCache, "Enable shared plugin cache for provider plugins.")
+	flags.StringVar(&cfg.PluginCacheDir, "plugin-cache-dir", cfg.PluginCacheDir, "Directory for shared plugin cache.")
+	flags.StringVar(&cfg.EngineBinDir, "engine-bins-dir", cfg.EngineBinDir, "Destination directory for engine binary downloads.")
+}
+
+// NewRemoteOperationClient constructs a remote API client for an operation.
+func NewRemoteOperationClient(jobToken []byte, url string, logger logr.Logger) (OperationClient, error) {
+	client, err := otfhttp.NewClient(otfhttp.ClientConfig{
+		URL:           url,
+		Token:         string(jobToken),
+		Logger:        logger,
+		RetryRequests: true,
+	})
+	if err != nil {
+		return OperationClient{}, err
+	}
+	return OperationClient{
+		Runs:       &runpkg.Client{Client: client},
+		Jobs:       &Client{Client: client},
+		Workspaces: &workspace.Client{Client: client},
+		Variables:  &variable.Client{Client: client},
+		State:      &state.Client{Client: client},
+		Configs:    &configversion.Client{Client: client},
+		Server:     client,
+	}, nil
+}
+
+func DoOperation(runnerCtx context.Context, g *errgroup.Group, opts OperationOptions) {
 	// An operation has its own uninherited context; the operation is instead
 	// canceled via its cancel() method, which provides more control, with the
 	// ability to gracefully or forcefully cancel an operation.
 	ctx, cancelfn := context.WithCancel(context.Background())
 	// Authenticate as the job (only effective on server runner; the agent
 	// runner instead authenticates remotely via its job token).
-	ctx = authz.AddSubjectToContext(ctx, opts.job)
+	ctx = authz.AddSubjectToContext(ctx, opts.Job)
 
 	envs := defaultEnvs
-	if opts.PluginCache {
-		envs = append(envs, "TF_PLUGIN_CACHE_DIR="+PluginCacheDir)
-	}
 	// make token available to engine CLI
-	envs = append(envs, internal.CredentialEnv(opts.server.Hostname(), opts.jobToken))
+	envs = append(envs, internal.CredentialEnv(opts.Client.Server.Hostname(), opts.JobToken))
 
-	return &operation{
-		Logger:       opts.logger.WithValues("job", opts.job),
-		Sandbox:      opts.Sandbox,
-		Debug:        opts.Debug,
-		job:          opts.job,
-		engineBinDir: opts.engineBinDir,
-		envs:         envs,
-		ctx:          ctx,
-		cancelfn:     cancelfn,
-		runs:         opts.runs,
-		workspaces:   opts.workspaces,
-		variables:    opts.variables,
-		jobs:         opts.jobs,
-		state:        opts.state,
-		configs:      opts.configs,
-		server:       opts.server,
-		isAgent:      opts.isAgent,
+	op := &operation{
+		Logger:   opts.Logger.WithValues("job", opts.Job),
+		job:      opts.Job,
+		envs:     envs,
+		ctx:      ctx,
+		cancelfn: cancelfn,
+		client:   opts.Client,
+		cfg:      opts.OperationConfig,
+	}
+	// When runner context is done (i.e. runner is exiting), gracefully cancel the op.
+	go func() {
+		<-runnerCtx.Done()
+		op.cancel(false, true)
+	}()
+	// If a group is defined then run op within go routine
+	if g != nil {
+		g.Go(func() error {
+			op.doAndFinish()
+			return nil
+		})
+	} else {
+		op.doAndFinish()
 	}
 }
 
 // doAndFinish executes the job and marks the job as complete with the
 // appropriate status.
 func (o *operation) doAndFinish() {
-	// Whilst operation is being done relay any cancelation signals
+	// Whilst operation is underway relay any cancelation signals
 	go func() {
 		handleJobSignal := func() error {
 			for {
 				// blocks until signal received
-				signal, err := o.jobs.awaitJobSignal(o.ctx, o.job.ID)()
+				signal, err := o.client.Jobs.awaitJobSignal(o.ctx, o.job.ID)()
 				if err != nil {
 					// If context has closed then the op has finished and we can
 					// exit.
@@ -236,25 +262,28 @@ func (o *operation) doAndFinish() {
 		opts.Status = JobFinished
 		o.V(0).Info("finished job successfully")
 	}
-	if err := o.jobs.finishJob(o.ctx, o.job.ID, opts); err != nil {
+	if err := o.client.Jobs.finishJob(o.ctx, o.job.ID, opts); err != nil {
 		o.Error(err, "sending job status", "status", opts.Status)
 	}
 }
 
 // do executes the job
 func (o *operation) do() error {
-	run, err := o.runs.Get(o.ctx, o.job.RunID)
+	run, err := o.client.Runs.Get(o.ctx, o.job.RunID)
 	if err != nil {
 		return err
 	}
 	o.run = run
-	o.downloader = engine.NewDownloader(o.run.Engine, o.engineBinDir)
+	o.downloader, err = engine.NewDownloader(o.Logger, o.run.Engine, o.cfg.EngineBinDir)
+	if err != nil {
+		return err
+	}
 
 	// Get workspace in order to get working directory path
 	//
 	// TODO: add working directory to run.Run so we skip having to retrieve
 	// workspace.
-	ws, err := o.workspaces.Get(o.ctx, o.job.WorkspaceID)
+	ws, err := o.client.Workspaces.Get(o.ctx, o.job.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("retreiving workspace: %w", err)
 	}
@@ -271,13 +300,13 @@ func (o *operation) do() error {
 	writer := runpkg.NewPhaseWriter(o.ctx, runpkg.PhaseWriterOptions{
 		RunID:  run.ID,
 		Phase:  run.Phase(),
-		Writer: o.runs,
+		Writer: o.client.Runs,
 	})
 	defer writer.Close()
 	o.out = writer
 
 	// dump info if in debug mode
-	if o.Debug {
+	if o.cfg.Debug {
 		hostname, err := os.Hostname()
 		if err != nil {
 			return err
@@ -286,8 +315,7 @@ func (o *operation) do() error {
 		fmt.Fprintln(o.out, "Debug mode enabled")
 		fmt.Fprintln(o.out, "------------------")
 		fmt.Fprintf(o.out, "Hostname: %s\n", hostname)
-		fmt.Fprintf(o.out, "External agent: %t\n", o.isAgent)
-		fmt.Fprintf(o.out, "Sandbox mode: %t\n", o.Sandbox)
+		fmt.Fprintf(o.out, "External agent: %t\n", o.cfg.IsAgent)
 		fmt.Fprintln(o.out, "------------------")
 		fmt.Fprintln(o.out)
 	}
@@ -302,6 +330,9 @@ func (o *operation) do() error {
 		o.writeTerraformVars,
 		o.deleteBackendConfig,
 		o.downloadState,
+	}
+	if o.cfg.PluginCache {
+		steps = append(steps, o.enablePluginCache)
 	}
 	switch run.Phase() {
 	case runpkg.PlanPhase:
@@ -366,20 +397,11 @@ func (o *operation) cancel(force, sendSignal bool) {
 type (
 	// executionOptions are options that modify the execution of a process.
 	executionOptions struct {
-		sandboxIfEnabled bool
-		redirectStdout   *string
+		redirectStdout *string
 	}
 
 	executionOptionFunc func(*executionOptions)
 )
-
-// sandboxIfEnabled sandboxes the execution process *if* the daemon is configured
-// with a sandbox.
-func sandboxIfEnabled() executionOptionFunc {
-	return func(e *executionOptions) {
-		e.sandboxIfEnabled = true
-	}
-}
 
 // redirectStdout redirects stdout to the destination path.
 func redirectStdout(dst string) executionOptionFunc {
@@ -396,9 +418,6 @@ func (o *operation) execute(args []string, funcs ...executionOptionFunc) error {
 	var opts executionOptions
 	for _, fn := range funcs {
 		fn(&opts)
-	}
-	if opts.sandboxIfEnabled && o.Sandbox {
-		args = o.addSandboxWrapper(args)
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = o.workdir.String()
@@ -426,43 +445,34 @@ func (o *operation) execute(args []string, funcs ...executionOptionFunc) error {
 	}
 	o.proc = cmd.Process
 
+	o.Logger.V(5).Info("executing process", "process", args[0], "args", args[1:])
+
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("%w: %s", err, cleanStderr(stderr.String()))
 	}
 	return nil
 }
 
-// addSandboxWrapper wraps the args within a bubblewrap sandbox.
-func (o *operation) addSandboxWrapper(args []string) []string {
-	bargs := []string{
-		"bwrap",
-		"--ro-bind", args[0], path.Join("/bin", path.Base(args[0])),
-		"--bind", o.root, "/config",
-		// for DNS lookups
-		"--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
-		// for verifying SSL connections
-		"--ro-bind", internal.SSLCertsDir(), internal.SSLCertsDir(),
-		"--chdir", path.Join("/config", o.relative),
-		// terraform v1.0.10 (but not v1.2.2) reads /proc/self/exe.
-		"--proc", "/proc",
-		// avoids provider error "failed to read schema..."
-		"--tmpfs", "/tmp",
+func (o *operation) enablePluginCache(ctx context.Context) error {
+	if err := os.MkdirAll(o.cfg.PluginCacheDir, 0o755); err != nil {
+		return fmt.Errorf("creating plugin cache directory: %w", err)
 	}
-	if o.PluginCache {
-		bargs = append(bargs, "--ro-bind", PluginCacheDir, PluginCacheDir)
-	}
-	bargs = append(bargs, path.Join("/bin", path.Base(args[0])))
-	return append(bargs, args[1:]...)
+	o.envs = append(o.envs, "TF_PLUGIN_CACHE_DIR="+o.cfg.PluginCacheDir)
+	return nil
 }
 
 func (o *operation) downloadEngine(ctx context.Context) error {
 	var err error
 	o.enginePath, err = o.downloader.Download(ctx, o.run.EngineVersion, o.out)
-	return err
+	if err != nil {
+		return fmt.Errorf("downloading engine: %w", err)
+	}
+	o.Logger.V(5).Info("downloaded engine", "engine", o.run.Engine, "version", o.run.EngineVersion, "path", o.enginePath)
+	return nil
 }
 
 func (o *operation) downloadConfig(ctx context.Context) error {
-	cv, err := o.configs.DownloadConfig(ctx, o.run.ConfigurationVersionID)
+	cv, err := o.client.Configs.DownloadConfig(ctx, o.run.ConfigurationVersionID)
 	if err != nil {
 		return fmt.Errorf("unable to download config: %w", err)
 	}
@@ -483,7 +493,7 @@ func (o *operation) deleteBackendConfig(ctx context.Context) error {
 // downloadState downloads current state to disk. If there is no state yet then
 // nothing will be downloaded and no error will be reported.
 func (o *operation) downloadState(ctx context.Context) error {
-	statefile, err := o.state.DownloadCurrent(ctx, o.run.WorkspaceID)
+	statefile, err := o.client.State.DownloadCurrent(ctx, o.run.WorkspaceID)
 	if errors.Is(err, internal.ErrResourceNotFound) {
 		return nil
 	} else if err != nil {
@@ -499,7 +509,7 @@ func (o *operation) downloadState(ctx context.Context) error {
 // directory. If one has not been uploaded then this will simply write an empty
 // file, which is harmless.
 func (o *operation) downloadLockFile(ctx context.Context) error {
-	lockFile, err := o.runs.GetLockFile(ctx, o.run.ID)
+	lockFile, err := o.client.Runs.GetLockFile(ctx, o.run.ID)
 	if err != nil {
 		return err
 	}
@@ -509,7 +519,7 @@ func (o *operation) downloadLockFile(ctx context.Context) error {
 // readVars retrieves terraform and environment variables and adds them to the
 // operation
 func (o *operation) readVars(ctx context.Context) error {
-	variables, err := o.variables.ListEffectiveVariables(o.ctx, o.run.ID)
+	variables, err := o.client.Variables.ListEffectiveVariables(o.ctx, o.run.ID)
 	if err != nil {
 		return fmt.Errorf("retrieving variables: %w", err)
 	}
@@ -536,21 +546,24 @@ func (o *operation) writeTerraformVars(ctx context.Context) error {
 func (o *operation) setupDynamicCredentials(ctx context.Context) error {
 	envs, err := dynamiccreds.Setup(
 		ctx,
-		o.jobs,
+		o.client.Jobs,
 		o.workdir.String(),
 		o.job.ID,
 		o.job.Phase,
 		o.envs,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting up dynamic provider credentials: %w", err)
 	}
 	o.envs = append(o.envs, envs...)
 	return nil
 }
 
 func (o *operation) init(ctx context.Context) error {
-	return o.execute([]string{o.enginePath, "init", "-input=false"})
+	if err := o.execute([]string{o.enginePath, "init", "-input=false"}); err != nil {
+		return fmt.Errorf("executing init: %w", err)
+	}
+	return nil
 }
 
 func (o *operation) plan(ctx context.Context) error {
@@ -558,8 +571,24 @@ func (o *operation) plan(ctx context.Context) error {
 	if o.run.IsDestroy {
 		args = append(args, "-destroy")
 	}
+	if !o.run.Refresh {
+		// the default is true
+		args = append(args, "-refresh=false")
+	}
+	if o.run.RefreshOnly {
+		args = append(args, "-refresh-only")
+	}
+	for _, addr := range o.run.ReplaceAddrs {
+		args = append(args, "-replace="+addr)
+	}
+	for _, addr := range o.run.TargetAddrs {
+		args = append(args, "-target="+addr)
+	}
 	args = append(args, "-out="+planFilename)
-	return o.execute(append([]string{o.enginePath}, args...))
+	if err := o.execute(append([]string{o.enginePath}, args...)); err != nil {
+		return fmt.Errorf("executing plan: %w", err)
+	}
+	return nil
 }
 
 func (o *operation) apply(ctx context.Context) (err error) {
@@ -595,24 +624,28 @@ func (o *operation) apply(ctx context.Context) (err error) {
 		args = append(args, "-destroy")
 	}
 	args = append(args, planFilename)
-	return o.execute(append([]string{o.enginePath}, args...), sandboxIfEnabled())
+	return o.execute(append([]string{o.enginePath}, args...))
 }
 
 func (o *operation) convertPlanToJSON(ctx context.Context) error {
 	args := []string{"show", "-json", planFilename}
-	return o.execute(
+	err := o.execute(
 		append([]string{o.enginePath}, args...),
 		redirectStdout(jsonPlanFilename),
 	)
+	if err != nil {
+		return fmt.Errorf("converting plan file to json: %w", err)
+	}
+	return nil
 }
 
 func (o *operation) uploadPlan(ctx context.Context) error {
 	file, err := o.readFile(planFilename)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading plan file: %w", err)
 	}
 
-	if err := o.runs.UploadPlanFile(ctx, o.run.ID, file, runpkg.PlanFormatBinary); err != nil {
+	if err := o.client.Runs.UploadPlanFile(ctx, o.run.ID, file, runpkg.PlanFormatBinary); err != nil {
 		return fmt.Errorf("unable to upload plan: %w", err)
 	}
 
@@ -622,9 +655,9 @@ func (o *operation) uploadPlan(ctx context.Context) error {
 func (o *operation) uploadJSONPlan(ctx context.Context) error {
 	jsonFile, err := o.readFile(jsonPlanFilename)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading plan in json format: %w", err)
 	}
-	if err := o.runs.UploadPlanFile(ctx, o.run.ID, jsonFile, runpkg.PlanFormatJSON); err != nil {
+	if err := o.client.Runs.UploadPlanFile(ctx, o.run.ID, jsonFile, runpkg.PlanFormatJSON); err != nil {
 		return fmt.Errorf("unable to upload JSON plan: %w", err)
 	}
 	return nil
@@ -638,14 +671,14 @@ func (o *operation) uploadLockFile(ctx context.Context) error {
 	} else if err != nil {
 		return fmt.Errorf("reading lock file: %w", err)
 	}
-	if err := o.runs.UploadLockFile(ctx, o.run.ID, lockFile); err != nil {
+	if err := o.client.Runs.UploadLockFile(ctx, o.run.ID, lockFile); err != nil {
 		return fmt.Errorf("unable to upload lock file: %w", err)
 	}
 	return nil
 }
 
 func (o *operation) downloadPlanFile(ctx context.Context) error {
-	plan, err := o.runs.GetPlanFile(ctx, o.run.ID, runpkg.PlanFormatBinary)
+	plan, err := o.client.Runs.GetPlanFile(ctx, o.run.ID, runpkg.PlanFormatBinary)
 	if err != nil {
 		return err
 	}
@@ -664,7 +697,7 @@ func (o *operation) uploadState(ctx context.Context) error {
 	if err := json.Unmarshal(statefile, &f); err != nil {
 		return err
 	}
-	_, err = o.state.Create(ctx, state.CreateStateVersionOptions{
+	_, err = o.client.State.Create(ctx, state.CreateStateVersionOptions{
 		WorkspaceID: o.run.WorkspaceID,
 		State:       statefile,
 		Serial:      &f.Serial,

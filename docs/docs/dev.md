@@ -46,7 +46,7 @@ The database schema is migrated using [tern](https://github.com/jackc/tern). The
 
 ## HTML path helpers
 
-Rails-style path helpers are generated using `go generate`. The path specifications are maintained in `./http/html/paths/paths.yaml`. After making changes to the specs run the following make task to generate the helpers:
+Rails-style path helpers are generated using `go generate`. The path specifications are maintained in `./ui/paths/paths.yaml`. After making changes to the specs run the following make task to generate the helpers:
 
 * `make paths`
 
@@ -81,10 +81,10 @@ If you make any changes to a chart you need to bump its chart version. You can e
 # requires `yq`
 #
 # To update the otfd chart version
-CHART=otfd make bump
+CHART=otfd make bump-chart-version
 #
 # To update the otf-agent chart version
-CHART=otf-agent make bump
+CHART=otf-agent make bump-chart-version
 ```
 
 ### Generating README.md's
@@ -92,7 +92,7 @@ CHART=otf-agent make bump
 Each chart's `README.md` is generated from a template, `README.md.gotmpl` in the same directory, using [helm-docs](https://github.com/norwoodj/helm-docs). Therefore any changes must be made to `README.md.gotmpl` and not `README.md`. To update all templated README.md's, run the following from the root of the repo:
 
 ```bash
-helm-docs
+make helm-docs
 ```
 Any changes to the version or to the `values.yaml` file are automatically reflected in the generated `README.md`. 
 

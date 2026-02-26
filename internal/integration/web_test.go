@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/team"
 	userpkg "github.com/leg100/otf/internal/user"
 	"github.com/playwright-community/playwright-go"
@@ -19,7 +18,7 @@ func TestWeb(t *testing.T) {
 	user := userFromContext(t, ctx)
 
 	team, err := daemon.Teams.Create(ctx, org.Name, team.CreateTeamOptions{
-		Name: internal.Ptr("devops"),
+		Name: new("devops"),
 	})
 	require.NoError(t, err)
 	err = daemon.Users.AddTeamMembership(ctx, team.ID, []userpkg.Username{user.Username})
@@ -36,7 +35,7 @@ func TestWeb(t *testing.T) {
 		err = page.Locator("#menu-item-teams > a").Click()
 		require.NoError(t, err)
 		// select devops team
-		err = page.Locator("#item-team-devops").Click()
+		err = page.Locator(`//tr[@id='item-team-devops']/td[1]/a`).Click()
 		require.NoError(t, err)
 		// tick checkbox for workspace manager role
 		err = page.Locator("#manage_workspaces").Click()
@@ -74,7 +73,7 @@ func TestWeb(t *testing.T) {
 		require.NoError(t, err)
 
 		// select owners team
-		err = page.Locator("#item-team-owners").Click()
+		err = page.Locator(`//tr[@id='item-team-owners']/td[1]/a`).Click()
 		require.NoError(t, err)
 
 		err = expect.Locator(page.Locator(fmt.Sprintf("#item-user-%s #username", user.Username))).ToHaveText(user.Username.String())

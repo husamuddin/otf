@@ -39,7 +39,6 @@ type Config struct {
 	WebhookHost                  string
 	Address                      string
 	Database                     string
-	AllowedOrigins               string
 	MaxConfigSize                int64
 	SSL                          bool
 	CertFile, KeyFile            string
@@ -55,6 +54,9 @@ type Config struct {
 	ApplyingTimeout              time.Duration
 	OverrideTimeoutCheckInterval time.Duration
 	DefaultEngine                *engine.Engine
+	DeleteRunsAfter              time.Duration
+	DeleteConfigsAfter           time.Duration
+	OverrideDeleterInterval      time.Duration
 
 	tokens.GoogleIAPConfig
 }
@@ -62,11 +64,11 @@ type Config struct {
 // NewConfig constructs an otfd configuration with defaults.
 func NewConfig() Config {
 	return Config{
-		RunnerConfig:    runner.NewConfig(),
+		RunnerConfig:    runner.NewDefaultConfig(),
 		CacheConfig:     &inmem.CacheConfig{},
 		MaxConfigSize:   configversion.DefaultConfigMaxSize,
 		DefaultEngine:   engine.Default,
-		GithubHostname:  github.DefaultBaseURL,
+		GithubHostname:  github.DefaultBaseURL(),
 		GitlabHostname:  gitlab.DefaultBaseURL,
 		ForgejoHostname: forgejo.DefaultBaseURL,
 	}

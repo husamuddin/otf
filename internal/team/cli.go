@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/leg100/otf/internal"
-	otfapi "github.com/leg100/otf/internal/api"
+	otfhttp "github.com/leg100/otf/internal/http"
+
 	"github.com/leg100/otf/internal/organization"
 	"github.com/leg100/otf/internal/resource"
 
@@ -22,7 +22,7 @@ type cliClient interface {
 	Delete(ctx context.Context, teamID resource.TfeID) error
 }
 
-func NewTeamCommand(apiClient *otfapi.Client) *cobra.Command {
+func NewTeamCommand(apiClient *otfhttp.Client) *cobra.Command {
 	cli := &teamCLI{}
 	cmd := &cobra.Command{
 		Use:   "teams",
@@ -52,7 +52,7 @@ func (a *teamCLI) teamNewCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			team, err := a.client.Create(cmd.Context(), orgName, CreateTeamOptions{
-				Name: internal.Ptr(args[0]),
+				Name: new(args[0]),
 			})
 			if err != nil {
 				return err

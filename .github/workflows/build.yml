@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
       - name: Check no diff
@@ -24,12 +24,17 @@ jobs:
       - name: Lint check
         run: |
           make lint
-          helm lint ./charts/otfd
-          helm lint ./charts/otf-agent
-          helm template ./charts/otfd > /dev/null
-          helm template ./charts/otf-agent --set token=my_agent_token --set url=https://otf.ninja > /dev/null
+          make helm-lint
       - name: Vet check
         run: make vet
+      - name: Install e2e dependencies
+        run: make install-playwright-ubuntu
+      - name: Install tofu for provider mirror setup
+        uses: opentofu/setup-opentofu@v1
+      - name: Install terraform for provider mirror setup
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
       - name: Add hosts to /etc/hosts
         run: |
           # API tests create webhooks on github.com, and github.com mandates
@@ -43,19 +48,16 @@ jobs:
           # to create a webhook on a github repo
           OAUTH_CLIENT_GITHUB_TOKEN: ${{ secrets.GO_TFE_OAUTH_CLIENT_GITHUB_TOKEN }}
           GITHUB_POLICY_SET_IDENTIFIER: leg100/go-tfe-webhooks
-      - name: Install e2e dependencies
-        run: make install-playwright-ubuntu
-      - name: Install tofu for provider mirror setup
-        uses: opentofu/setup-opentofu@v1
-      - name: Install terraform for provider mirror setup
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-      - name: Setup provider mirror for e2e tests
+      - name: Setup provider mirror for integration tests
         run: ./hack/setup_mirror.sh
+      - name: Create kind cluster for integration tests
+        uses: helm/kind-action@v1.13.0
+        with:
+          cluster_name: kind
       - name: Tests
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          OTF_TEST_KUBE: true
         run: make test
       - name: Archive browser traces
         if: always()
@@ -71,6 +73,8 @@ jobs:
       tag_name: ${{ steps.release-please.outputs.tag_name }} # e.g. v1.0.0
       version: ${{ steps.release-please.outputs.version }} # e.g. 1.0.0
     steps:
+      # Won't upgrade to v4 until they fix this bug:
+      # https://github.com/googleapis/release-please-action/issues/912
       - uses: google-github-actions/release-please-action@v3
         id: release-please
         with:
@@ -81,18 +85,20 @@ jobs:
     needs: [build, release-please]
     if: needs.release-please.outputs.release_created
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - run: git fetch --force --tags
-      - uses: docker/login-action@v2
+      - uses: docker/login-action@v3
         with:
           username: leg100
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
-      - uses: docker/setup-qemu-action@v2
+      - uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - uses: goreleaser/goreleaser-action@v6
         with:
           args: release --clean --skip=sign,validate
@@ -104,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Bump version
         run: |
           # set app version on all charts
@@ -116,27 +122,20 @@ jobs:
           # re-generate README.md to reflect updated version
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           brew install norwoodj/tap/helm-docs
-          helm-docs
+          make helm-docs
       - name: Lint check
         run: |
-          helm lint ./charts/otfd
-          helm lint ./charts/otf-agent
-          helm template ./charts/otfd > /dev/null
-          helm template ./charts/otf-agent --set token=my_agent_token --set url=https://otf.ninja > /dev/null
-      - name: Create kind cluster
-        uses: helm/kind-action@v1.12.0
-      - name: Test
+          make helm-lint
+      - name: Commit new helm chart versions
         run: |
-          make test-otfd
-      - name: Debug
-        if: failure()
-        run: |
-          kubectl -n otfd-test get all
-          kubectl -n otfd-test describe pod
-          kubectl -n otfd-test logs -l app.kubernetes.io/name=postgresql
-          kubectl -n otfd-test logs -l app.kubernetes.io/name=otfd
+          # stage changes and commit
+          git config --global user.email "chart-bumper@otf.ninja"
+          git config --global user.name "Chart bumper"
+          git add -A
+          git commit -m "chore: bump helm charts with app version ${{ needs.release-please.outputs.tag_name }}"
+          git push origin master
       - name: Checkout charts repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: otf-charts
           token: ${{ secrets.OTF_CHARTS_TOKEN }}

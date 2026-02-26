@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
-	otfapi "github.com/leg100/otf/internal/api"
 	"github.com/leg100/otf/internal/authz"
+	otfhttp "github.com/leg100/otf/internal/http"
 	"github.com/leg100/otf/internal/http/html"
-	"github.com/leg100/otf/internal/http/html/paths"
+	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/resource"
 	"github.com/leg100/otf/internal/tfeapi"
+	"github.com/leg100/otf/internal/ui/paths"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -30,7 +30,7 @@ const (
 var AuthenticatedPrefixes = []string{
 	tfeapi.APIPrefixV2,
 	tfeapi.ModuleV1Prefix,
-	otfapi.DefaultBasePath,
+	otfhttp.APIBasePath,
 	paths.UIPrefix,
 }
 

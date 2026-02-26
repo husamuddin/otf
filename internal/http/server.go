@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/felixge/httpsnoop"
@@ -13,14 +14,18 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/go-logr/logr"
 	"github.com/leg100/otf/internal"
 	"github.com/leg100/otf/internal/http/html"
-	"github.com/leg100/otf/internal/http/html/components"
 	"github.com/leg100/otf/internal/json"
+	"github.com/leg100/otf/internal/logr"
+	"github.com/leg100/otf/internal/ui/paths"
 )
 
 const (
+	APIBasePath     = "/otfapi"
+	APIPingEndpoint = "ping"
+	DefaultURL      = "https://localhost:8080"
+
 	// shutdownTimeout is the time given for outstanding requests to finish
 	// before shutdown.
 	shutdownTimeout     = 1 * time.Second
@@ -43,7 +48,6 @@ type (
 		SSL                  bool
 		CertFile, KeyFile    string
 		EnableRequestLogging bool
-		AllowedOrigins       string
 
 		Handlers []internal.Handlers
 		// middleware to intercept requests, executed in the order given.
@@ -81,6 +85,11 @@ func NewServer(logger logr.Logger, cfg ServerConfig) (*Server, error) {
 	if err := html.AddStaticHandler(logger, r); err != nil {
 		return nil, err
 	}
+
+	// basic no-op ping handler for API
+	r.HandleFunc(path.Join(APIBasePath, APIPingEndpoint), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	// Prometheus metrics
 	r.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
@@ -128,7 +137,13 @@ func NewServer(logger logr.Logger, cfg ServerConfig) (*Server, error) {
 		})
 	}
 
-	components.SetAllowedOrigins(cfg.AllowedOrigins)
+	// Apply caching to UI responses
+	//
+	// TODO: consider applying to all responses, including API.
+	r.Use((&etagMiddleware{
+		logger: logger,
+		prefix: paths.UIPrefix,
+	}).middleware)
 
 	return &Server{
 		Logger:       logger,

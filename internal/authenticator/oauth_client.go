@@ -14,9 +14,9 @@ import (
 	otfhttp "github.com/leg100/otf/internal/http"
 	"github.com/leg100/otf/internal/http/decode"
 	"github.com/leg100/otf/internal/http/html"
-	"github.com/leg100/otf/internal/http/html/paths"
 	"github.com/leg100/otf/internal/logr"
 	"github.com/leg100/otf/internal/resource"
+	"github.com/leg100/otf/internal/ui/paths"
 	userpkg "github.com/leg100/otf/internal/user"
 	"golang.org/x/oauth2"
 )
@@ -168,7 +168,7 @@ func (a *OAuthClient) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract user info from OAuth token
 	userInfo, err := a.parseUserInfo(r.Context(), token)
 	if err != nil {
-		html.Error(w, err.Error(), http.StatusInternalServerError)
+		html.Error(r, w, err.Error())
 		return
 	}
 
@@ -181,7 +181,7 @@ func (a *OAuthClient) callbackHandler(w http.ResponseWriter, r *http.Request) {
 		user, err = a.users.Create(ctx, userInfo.Username.String())
 	}
 	if err != nil {
-		html.Error(w, err.Error(), http.StatusInternalServerError)
+		html.Error(r, w, err.Error())
 		return
 	}
 
@@ -197,7 +197,7 @@ func (a *OAuthClient) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.sessions.StartSession(w, r, user.ID); err != nil {
-		html.Error(w, err.Error(), http.StatusInternalServerError)
+		html.Error(r, w, err.Error())
 		return
 	}
 }

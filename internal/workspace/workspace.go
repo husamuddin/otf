@@ -260,14 +260,14 @@ func (f *factory) NewWorkspace(ctx context.Context, opts CreateOptions) (*Worksp
 	if opts.TriggerPrefixes != nil {
 		ws.TriggerPrefixes = opts.TriggerPrefixes
 	}
-	// Enforce three-way mutually exclusivity between:
+	// Enforce three-way mutual exclusivity between:
 	// (a) tags-regex
 	// (b) trigger-patterns
 	// (c) always-trigger=true
-	if (opts.ConnectOptions != nil && opts.ConnectOptions.TagsRegex != nil) && opts.TriggerPatterns != nil {
+	if (opts.ConnectOptions != nil && opts.ConnectOptions.TagsRegex != nil && *opts.ConnectOptions.TagsRegex != "") && opts.TriggerPatterns != nil {
 		return nil, ErrTagsRegexAndTriggerPatterns
 	}
-	if (opts.ConnectOptions != nil && opts.ConnectOptions.TagsRegex != nil) && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
+	if (opts.ConnectOptions != nil && opts.ConnectOptions.TagsRegex != nil && *opts.ConnectOptions.TagsRegex != "") && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
 		return nil, ErrTagsRegexAndAlwaysTrigger
 	}
 	if len(opts.TriggerPatterns) > 0 && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
@@ -287,6 +287,13 @@ func (f *factory) NewWorkspace(ctx context.Context, opts CreateOptions) (*Worksp
 }
 
 func (ws *Workspace) String() string { return ws.Organization.String() + "/" + ws.Name }
+
+func (ws *Workspace) Info() resource.Info {
+	return resource.Info{
+		Name: ws.Name,
+		ID:   ws.ID,
+	}
+}
 
 // ExecutionModes returns a list of possible execution modes
 func (ws *Workspace) ExecutionModes() []string {
@@ -422,14 +429,14 @@ func (ws *Workspace) Update(opts UpdateOptions) (*bool, error) {
 		ws.TriggerPrefixes = opts.TriggerPrefixes
 		updated = true
 	}
-	// Enforce three-way mutually exclusivity between:
+	// Enforce three-way mutual exclusivity between:
 	// (a) tags-regex
 	// (b) trigger-patterns
 	// (c) always-trigger=true
-	if (opts.ConnectOptions != nil && opts.TagsRegex != nil) && opts.TriggerPatterns != nil {
+	if (opts.ConnectOptions != nil && opts.TagsRegex != nil && *opts.ConnectOptions.TagsRegex != "") && opts.TriggerPatterns != nil {
 		return nil, ErrTagsRegexAndTriggerPatterns
 	}
-	if (opts.ConnectOptions != nil && opts.TagsRegex != nil) && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
+	if (opts.ConnectOptions != nil && opts.TagsRegex != nil && *opts.ConnectOptions.TagsRegex != "") && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
 		return nil, ErrTagsRegexAndAlwaysTrigger
 	}
 	if len(opts.TriggerPatterns) > 0 && (opts.AlwaysTrigger != nil && *opts.AlwaysTrigger) {
@@ -461,7 +468,7 @@ func (ws *Workspace) Update(opts UpdateOptions) (*bool, error) {
 			return nil, errors.New("cannot disconnect an already disconnected workspace")
 		}
 		// workspace is to be disconnected
-		connect = internal.Ptr(false)
+		connect = new(false)
 		updated = true
 	}
 	if opts.ConnectOptions != nil {
@@ -470,11 +477,11 @@ func (ws *Workspace) Update(opts UpdateOptions) (*bool, error) {
 			if err := ws.addConnection(opts.ConnectOptions); err != nil {
 				return nil, err
 			}
-			connect = internal.Ptr(true)
+			connect = new(true)
 			updated = true
 		} else {
 			// modify existing connection
-			if opts.TagsRegex != nil {
+			if opts.TagsRegex != nil && *opts.ConnectOptions.TagsRegex != "" {
 				if err := ws.setTagsRegex(*opts.TagsRegex); err != nil {
 					return nil, fmt.Errorf("invalid tags-regex: %w", err)
 				}

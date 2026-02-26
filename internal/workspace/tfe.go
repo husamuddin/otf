@@ -90,7 +90,7 @@ func (a *tfe) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	// Always trigger runs if neither trigger patterns nor tags regex are set
 	if len(params.TriggerPatterns) == 0 && (params.VCSRepo == nil || params.VCSRepo.TagsRegex == nil) {
-		opts.AlwaysTrigger = internal.Ptr(true)
+		opts.AlwaysTrigger = new(true)
 	}
 	if params.Operations != nil {
 		if params.ExecutionMode != nil {
@@ -99,9 +99,9 @@ func (a *tfe) createWorkspace(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if *params.Operations {
-			opts.ExecutionMode = internal.Ptr(RemoteExecutionMode)
+			opts.ExecutionMode = new(RemoteExecutionMode)
 		} else {
-			opts.ExecutionMode = internal.Ptr(LocalExecutionMode)
+			opts.ExecutionMode = new(LocalExecutionMode)
 		}
 	}
 	if params.VCSRepo != nil {
@@ -356,6 +356,14 @@ func (a *tfe) updateWorkspace(w http.ResponseWriter, r *http.Request, workspaceI
 		return
 	}
 
+	if params.AgentPoolID != nil && params.AgentPoolID.IsZero() {
+		// The tfe terraform provider sends an empty string for the agent pool
+		// ID when it should be sending nil.
+		//
+		// https://github.com/leg100/otf/issues/827
+		params.AgentPoolID = nil
+	}
+
 	opts := UpdateOptions{
 		AgentPoolID:                params.AgentPoolID,
 		AllowDestroyPlan:           params.AllowDestroyPlan,
@@ -382,7 +390,7 @@ func (a *tfe) updateWorkspace(w http.ResponseWriter, r *http.Request, workspaceI
 	// (b) file-triggers-enabled=true and trigger-prefixes=empty
 	// (b) trigger-prefixes=non-empty and tags-regex=non-nil
 	if (params.FileTriggersEnabled != nil && !*params.FileTriggersEnabled) && (!params.VCSRepo.Set || !params.VCSRepo.Valid || params.VCSRepo.TagsRegex == nil) {
-		opts.AlwaysTrigger = internal.Ptr(true)
+		opts.AlwaysTrigger = new(true)
 	}
 
 	if params.VCSRepo.Set {
@@ -428,18 +436,17 @@ func (a *tfe) convert(from *Workspace, r *http.Request) (*TFEWorkspace, error) {
 // ToTFE converts an OTF workspace to a TFE workspace.
 func ToTFE(a *authz.Authorizer, from *Workspace, r *http.Request) (*TFEWorkspace, error) {
 	ctx := r.Context()
-	accessRequest := &authz.Request{ID: &from.ID}
 	perms := &TFEWorkspacePermissions{
-		CanLock:           a.CanAccess(ctx, authz.LockWorkspaceAction, accessRequest),
-		CanUnlock:         a.CanAccess(ctx, authz.UnlockWorkspaceAction, accessRequest),
-		CanForceUnlock:    a.CanAccess(ctx, authz.UnlockWorkspaceAction, accessRequest),
-		CanQueueApply:     a.CanAccess(ctx, authz.ApplyRunAction, accessRequest),
-		CanQueueDestroy:   a.CanAccess(ctx, authz.ApplyRunAction, accessRequest),
-		CanQueueRun:       a.CanAccess(ctx, authz.CreateRunAction, accessRequest),
-		CanDestroy:        a.CanAccess(ctx, authz.DeleteWorkspaceAction, accessRequest),
-		CanReadSettings:   a.CanAccess(ctx, authz.GetWorkspaceAction, accessRequest),
-		CanUpdate:         a.CanAccess(ctx, authz.UpdateWorkspaceAction, accessRequest),
-		CanUpdateVariable: a.CanAccess(ctx, authz.UpdateWorkspaceAction, accessRequest),
+		CanLock:           a.CanAccess(ctx, authz.LockWorkspaceAction, &from.ID),
+		CanUnlock:         a.CanAccess(ctx, authz.UnlockWorkspaceAction, &from.ID),
+		CanForceUnlock:    a.CanAccess(ctx, authz.UnlockWorkspaceAction, &from.ID),
+		CanQueueApply:     a.CanAccess(ctx, authz.ApplyRunAction, &from.ID),
+		CanQueueDestroy:   a.CanAccess(ctx, authz.ApplyRunAction, &from.ID),
+		CanQueueRun:       a.CanAccess(ctx, authz.CreateRunAction, &from.ID),
+		CanDestroy:        a.CanAccess(ctx, authz.DeleteWorkspaceAction, &from.ID),
+		CanReadSettings:   a.CanAccess(ctx, authz.GetWorkspaceAction, &from.ID),
+		CanUpdate:         a.CanAccess(ctx, authz.UpdateWorkspaceAction, &from.ID),
+		CanUpdateVariable: a.CanAccess(ctx, authz.UpdateWorkspaceAction, &from.ID),
 	}
 
 	to := &TFEWorkspace{

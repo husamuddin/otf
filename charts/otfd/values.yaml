@@ -11,7 +11,6 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -23,7 +22,7 @@ fullnameOverride: ""
 hostname: ""
 
 postgres:
-  # -- Install postgres chart dependency.
+  # -- Install postgres chart dependency. NOTE: this should only be used for testing purposes.
   enabled: false
 
 # -- Postgres connection string
@@ -160,9 +159,6 @@ ingress:
 serviceMonitor:
   enabled: false
 
-# -- Enable sandboxing of terraform apply - note, this will run pods as privileged
-sandbox: false
-
 caCerts:
   # -- Mount a secret containing CA certificates and make them available to both terraform and otfd, allowing them to communicate with API endpoints that use custom CA certificates.
   enabled: false
@@ -175,9 +171,6 @@ caCerts:
 proxy:
 # -- Specify hosts for which outbound connections should not use the proxy.
 no_proxy:
-
-# -- Allowed origins for websocket connections. See [docs](https://docs.otf.ninja/config/flags/#-allowed-origins)
-allowedOrigins: []
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -205,3 +198,10 @@ volumeMounts: []
 
 # -- Additional sidecar containers to run alongside the main otfd container
 sidecars: []
+
+## Role Based Access
+## Ref: https://kubernetes.io/docs/admin/authorization/rbac/
+##
+rbac:
+  # -- Create and use RBAC resources
+  create: true
